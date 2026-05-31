@@ -27,8 +27,12 @@ export interface BuiltServer {
   registry: PracticeRegistry
 }
 
-export function buildServer(config: AnonyMcpConfig): BuiltServer {
-  const registry = new PracticeRegistry(config.folders, config.requireManualApproval)
+export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): BuiltServer {
+  const registry = new PracticeRegistry(
+    config.folders,
+    config.requireManualApproval,
+    cachePassphrase
+  )
 
   const server = new McpServer(
     { name: 'anonymcp-server', version: '0.1.0' },

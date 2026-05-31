@@ -9,6 +9,7 @@
 // ============================================================
 
 import type { DetectedEntity, EntityType } from '../types.js'
+import { sha256 } from '../util/crypto.js'
 
 /** Prefissi leggibili per entità strutturate (pseudonimi numerici). */
 const STRUCTURED_PREFIX: Partial<Record<EntityType, string>> = {
@@ -62,12 +63,30 @@ export class SessionManager {
   private dictionary = new Map<string, SessionEntry>()
   /** Contatori fallback per tipo. */
   private counters = new Map<EntityType, number>()
+  /**
+   * Mappa: sha256(originale normalizzato) → pseudonimo, precaricata dalla cache
+   * cifrata della pratica. Permette di riusare lo stesso pseudonimo tra sessioni
+   * SENZA conservare il testo reale su disco (la cache contiene solo l'hash).
+   */
+  private byHash = new Map<string, { pseudonym: string; type: EntityType }>()
+
+  /** Hash di un testo originale — DEVE combaciare con practiceStore.hashOriginal. */
+  private static hashKey(originalText: string): string {
+    return sha256(originalText.trim().toLowerCase())
+  }
 
   /** Restituisce (o crea) il pseudonimo per un testo originale. */
   getOrCreatePseudonym(originalText: string, type: EntityType): string {
     const key = originalText.trim().toLowerCase()
     const existing = this.dictionary.get(key)
     if (existing) return existing.pseudonym
+
+    // Coerenza cross-sessione: se l'hash è nella cache precaricata, riusa il pseudonimo.
+    const fromCache = this.byHash.get(SessionManager.hashKey(originalText))
+    if (fromCache) {
+      this.dictionary.set(key, { pseudonym: fromCache.pseudonym, type: fromCache.type })
+      return fromCache.pseudonym
+    }
 
     let pseudonym: string
     const structuredPrefix = STRUCTURED_PREFIX[type]
@@ -103,6 +122,15 @@ export class SessionManager {
     this.dictionary.set(originalText.trim().toLowerCase(), { pseudonym, type })
   }
 
+  /**
+   * Precarica una coppia hash→pseudonimo dalla cache cifrata (che NON contiene
+   * il testo reale). Alla prossima occorrenza dell'entità, il pseudonimo sarà
+   * riusato senza generarne uno nuovo → coerenza tra sessioni.
+   */
+  preloadByHash(origHash: string, pseudonym: string, type: EntityType): void {
+    this.byHash.set(origHash, { pseudonym, type })
+  }
+
   /** Arricchisce entità rilevate con pseudonimi coerenti. */
   enrichEntities(entities: DetectedEntity[]): DetectedEntity[] {
     return entities.map((entity) => ({
@@ -129,5 +157,6 @@ export class SessionManager {
   reset(): void {
     this.dictionary.clear()
     this.counters.clear()
+    this.byHash.clear()
   }
 }

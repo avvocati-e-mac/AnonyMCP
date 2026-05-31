@@ -26,7 +26,14 @@ async function main(): Promise<void> {
   const config = loadConfig(configPath)
   setLogLevel(config.logLevel)
 
-  const { server, registry } = buildServer(config)
+  // Passphrase della cache cifrata (Fase 1: da env; Fase 2: keychain OS).
+  // Se assente, il modello è "forward-only": coerenza pseudonimi solo in sessione.
+  const cachePassphrase = process.env.ANONYMCP_CACHE_KEY || undefined
+  if (!cachePassphrase) {
+    log.warn('ANONYMCP_CACHE_KEY non impostata: cache pratica disabilitata (forward-only)')
+  }
+
+  const { server, registry } = buildServer(config, cachePassphrase)
 
   // Scansione iniziale di tutte le pratiche (i documenti vanno in quarantena
   // se requireManualApproval è attivo).
