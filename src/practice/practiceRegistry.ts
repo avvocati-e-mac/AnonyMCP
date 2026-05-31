@@ -8,14 +8,14 @@
 // ============================================================
 
 import { readdirSync, statSync, readFileSync } from 'node:fs'
-import { join, basename, extname } from 'node:path'
+import { join, basename } from 'node:path'
 import type { AnonymizationResult, DocumentStatus, ExposedFolder } from '../types.js'
 import { isSupported, isTextDocument } from '../pipeline/toMarkdown.js'
 import { processText } from '../pipeline/documentService.js'
 import { SessionManager } from '../engine/sessionManager.js'
 import { classifySensitivity } from '../pipeline/riskScorer.js'
 import { sanitizeId, isInternalArtifact } from '../util/pathGuard.js'
-import { sha256 } from '../util/crypto.js'
+import { hmac, randomKey } from '../util/crypto.js'
 import { log } from '../util/logger.js'
 
 export interface DocEntry {
@@ -38,6 +38,12 @@ export class PracticeRegistry {
   private practices = new Map<string, PracticeEntry>()
   /** Callback invocata quando cambia l'elenco di resource (per listChanged). */
   onResourcesChanged?: () => void
+  /**
+   * Chiave segreta casuale per gli id opachi (HMAC). Generata a ogni avvio:
+   * gli URI sono stabili nella sessione ma non correlabili tra sessioni né
+   * forzabili offline conoscendo i path.
+   */
+  private readonly idKey = randomKey()
 
   constructor(
     private folders: ExposedFolder[],
@@ -75,9 +81,13 @@ export class PracticeRegistry {
       })
   }
 
-  /** Genera un docId opaco e stabile per un file (no nome reale nell'URI). */
+  /**
+   * Genera un docId opaco e stabile per un file. Usa HMAC con la chiave di
+   * sessione (no sha256 nudo del path → non forzabile con dizionario) e NON
+   * include l'estensione (che rivelerebbe il tipo di documento).
+   */
   private docIdFor(filePath: string): string {
-    return sanitizeId(sha256(filePath).slice(0, 16) + extname(filePath))
+    return sanitizeId(hmac(filePath, this.idKey).slice(0, 24))
   }
 
   /**

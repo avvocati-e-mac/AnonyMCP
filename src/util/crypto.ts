@@ -9,6 +9,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  createHmac,
   randomBytes,
   scryptSync,
   timingSafeEqual
@@ -17,6 +18,19 @@ import {
 /** sha256 esadecimale di una stringa (testo normalizzato → hash). */
 export function sha256(input: string): string {
   return createHash('sha256').update(input, 'utf8').digest('hex')
+}
+
+/**
+ * HMAC-SHA256 con chiave segreta. A differenza di sha256 nudo, senza la `key`
+ * non è forzabile con dizionario/rainbow sui valori prevedibili (es. path).
+ */
+export function hmac(input: string, key: Buffer | string): string {
+  return createHmac('sha256', key).update(input, 'utf8').digest('hex')
+}
+
+/** Genera una chiave segreta casuale (per HMAC degli id opachi di sessione). */
+export function randomKey(bytes = 32): Buffer {
+  return randomBytes(bytes)
 }
 
 const ALGO = 'aes-256-gcm'
