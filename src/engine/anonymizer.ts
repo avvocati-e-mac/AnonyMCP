@@ -61,20 +61,22 @@ export function extractRegexEntities(text: string): RawEntity[] {
 }
 
 /**
- * Co-reference semplice: se "Mario Rossi" è un'entità PERSONA, anche le
- * occorrenze isolate del cognome "Rossi" ricevono lo stesso pseudonimo.
+ * Co-reference semplice: se "Mario Rossi" è un'entità PERSONA, mappa anche le
+ * occorrenze isolate del cognome "Rossi" allo STESSO pseudonimo del nome completo.
+ * Ritorna le coppie (cognome → testo-canonico-pieno) da collegare.
  */
-function addCoreferences(text: string, entities: RawEntity[]): RawEntity[] {
-  const extra: RawEntity[] = []
+function findCoreferences(text: string, entities: RawEntity[]): { surname: string; canonical: string }[] {
+  const out: { surname: string; canonical: string }[] = []
   const persons = entities.filter((e) => e.type === 'PERSONA' && e.text.includes(' '))
   for (const p of persons) {
     const parts = p.text.split(/\s+/)
     const surname = parts[parts.length - 1]!
     if (surname.length < 3) continue
-    const re = new RegExp(`\\b${surname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
-    if (re.test(text)) extra.push({ type: 'PERSONA', text: surname, source: 'coref' })
+    // NB: niente flag 'g' — `.test()` su un regex globale è stateful (lastIndex).
+    const re = new RegExp(`\\b${surname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+    if (re.test(text)) out.push({ surname, canonical: p.text })
   }
-  return extra
+  return out
 }
 
 /** Deduplica le entità per (tipo, testo normalizzato), tenendo la prima source. */
@@ -114,9 +116,27 @@ export async function detectEntities(
     }
   }
 
-  raw.push(...addCoreferences(text, raw))
+  const corefs = findCoreferences(text, raw)
 
   const unique = dedupe(raw)
+
+  // Pre-assegna i pseudonimi dei nomi completi così che i cognomi isolati
+  // possano ereditare lo stesso pseudonimo (coerenza co-reference).
+  for (const e of unique) {
+    if (e.type === 'PERSONA') session.getOrCreatePseudonym(e.text, e.type)
+  }
+  for (const { surname, canonical } of corefs) {
+    if (!session.has(surname)) {
+      session.preload(surname, session.getOrCreatePseudonym(canonical, 'PERSONA'), 'PERSONA')
+    }
+  }
+
+  // Aggiunge i cognomi co-referenziati come entità a sé (per la sostituzione).
+  for (const { surname } of corefs) {
+    if (!unique.some((u) => u.type === 'PERSONA' && normalize(u.text) === normalize(surname))) {
+      unique.push({ type: 'PERSONA', text: surname, source: 'coref' })
+    }
+  }
 
   const entities: DetectedEntity[] = unique.map((e) => {
     const pseudonym = session.getOrCreatePseudonym(e.text, e.type)

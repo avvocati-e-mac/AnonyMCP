@@ -1,0 +1,38 @@
+import { describe, it, expect } from 'vitest'
+import { encrypt, decrypt, sha256, deriveKey, constantTimeEqual } from '../src/util/crypto.js'
+
+describe('crypto AES-256-GCM', () => {
+  it('round-trip cifra/decifra', () => {
+    const blob = encrypt('dati sensibili', 'passphrase-segreta')
+    expect(decrypt(blob, 'passphrase-segreta')).toBe('dati sensibili')
+  })
+
+  it('fallisce con passphrase errata (authenticated encryption)', () => {
+    const blob = encrypt('x', 'giusta')
+    expect(() => decrypt(blob, 'sbagliata')).toThrow()
+  })
+
+  it('rileva blob manomesso (auth tag)', () => {
+    const blob = encrypt('x', 'k')
+    blob[blob.length - 1] ^= 0xff
+    expect(() => decrypt(blob, 'k')).toThrow()
+  })
+
+  it('produce ciphertext diverso ogni volta (IV/salt casuali)', () => {
+    expect(encrypt('x', 'k').equals(encrypt('x', 'k'))).toBe(false)
+  })
+
+  it('sha256 è deterministico', () => {
+    expect(sha256('abc')).toBe(sha256('abc'))
+    expect(sha256('abc')).not.toBe(sha256('abd'))
+  })
+
+  it('deriveKey produce 32 byte', () => {
+    expect(deriveKey('p', Buffer.from('0123456789abcdef')).length).toBe(32)
+  })
+
+  it('constantTimeEqual confronta correttamente', () => {
+    expect(constantTimeEqual(Buffer.from('aa'), Buffer.from('aa'))).toBe(true)
+    expect(constantTimeEqual(Buffer.from('aa'), Buffer.from('ab'))).toBe(false)
+  })
+})
