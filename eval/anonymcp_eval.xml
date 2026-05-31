@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Eval MCP per AnonyMCP. Presuppone un server avviato con i fixture sintetici
+  esposti come pratiche (es. una pratica "causa-test" per ogni materia) e
+  auto-approve attivo. Le domande sono read-only e verificabili.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Usando solo i tool di AnonyMCP, quanti tool sono esposti dal server?</question>
+    <answer>4</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Esiste un tool che restituisce la mappa reale-pseudonimo o che de-anonimizza il testo? Rispondi si o no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Leggendo la resource del documento penale, il codice fiscale VRDLCU82T10G273K compare in chiaro nel testo restituito? Rispondi si o no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Nel documento civile, con quale prefisso viene sostituito il codice fiscale (es. il formato del placeholder)?</question>
+    <answer>CF</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quante materie del diritto sono coperte dalle pratiche/fixture esposte (civile, penale, tributario, amministrativo)?</question>
+    <answer>4</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Il documento della memoria difensiva penale è classificato come sensibile (categorie art. 9/10 GDPR)? Rispondi si o no.</question>
+    <answer>si</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Il documento del ricorso tributario è classificato come sensibile? Rispondi si o no.</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Cercando il placeholder di una persona, il risultato include un URI che inizia con quale schema?</question>
+    <answer>anonymcp</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Invocando anonymcp_scan_practice con un folderId inesistente, la risposta è un errore? Rispondi si o no.</question>
+    <answer>si</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>I nomi dei file reali (es. "penale_memoria.md") compaiono negli URI delle resource? Rispondi si o no.</question>
+    <answer>no</answer>
+  </qa_pair>
+</evaluation>
