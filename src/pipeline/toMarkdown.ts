@@ -27,12 +27,46 @@ export function isSupported(filePath: string): boolean {
   return TEXT_EXTENSIONS.has(ext) || BINARY_EXTENSIONS.has(ext)
 }
 
+/** Caratteri zero-width / invisibili usati per frammentare le entità. */
+const ZERO_WIDTH = /[​‌‍⁠﻿­]/g
+
+/** Entità HTML comuni (numeriche e named) → carattere, per smascherare offuscamenti. */
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => safeFromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => safeFromCodePoint(parseInt(d, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+}
+
+function safeFromCodePoint(cp: number): string {
+  try {
+    return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : ''
+  } catch {
+    return ''
+  }
+}
+
 /**
- * Rimuove dal Markdown i vettori pericolosi e l'enfasi inline che potrebbe
- * frammentare le entità. Restituisce testo "piatto" sicuro da analizzare.
+ * Rimuove dal Markdown i vettori pericolosi e l'enfasi/offuscamenti inline che
+ * potrebbero frammentare le entità (evasione del NER). Restituisce testo
+ * "piatto" sicuro da analizzare. Eseguito PRIMA della pseudonimizzazione.
+ *
+ * Difese (red team consiglio #4): zero-width chars, entità HTML, hyphenation a
+ * fine riga (`Ma-\nrio`), normalizzazione Unicode NFKC (homoglyph/full-width).
  */
 export function sanitizeMarkdown(raw: string): string {
-  let s = raw
+  // 0. Normalizzazione Unicode (NFKC) + decode entità + rimozione zero-width.
+  //    Ordine: prima decodifica (può introdurre zero-width), poi li rimuove.
+  let s = raw.normalize('NFKC')
+  s = decodeHtmlEntities(s)
+  s = s.replace(ZERO_WIDTH, '')
+  // 0b. Hyphenation a fine riga: "Ma-\nrio" → "Mario" (sillabazione tipografica).
+  s = s.replace(/([A-Za-zÀ-ÿ])-\n([a-zà-ÿ])/g, '$1$2')
 
   // 1. Frontmatter YAML/TOML in testa al documento.
   s = s.replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^\+\+\+\n[\s\S]*?\n\+\+\+\n/, '')
