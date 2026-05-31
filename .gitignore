@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+# AnonyMCP runtime artifacts — NEVER commit (may contain sensitive material)
+*.anonymcp
+anonymcp.config.json
+.anonymcp-index/
+*.sqlite
+*.sqlite-journal
+
+# OS
+.DS_Store
