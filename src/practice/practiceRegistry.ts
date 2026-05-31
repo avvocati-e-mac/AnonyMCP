@@ -164,6 +164,22 @@ export class PracticeRegistry {
     return true
   }
 
+  /**
+   * Lista di revisione per uso LOCALE (CLI / app desktop), MAI esposta via MCP:
+   * associa il docId opaco al nome file reale così che l'umano sappia cosa sta
+   * approvando. Non passa mai per Resources/tool dell'LLM.
+   */
+  reviewList(folderId: string): { docId: string; fileName: string; status: DocumentStatus; sensitive: boolean }[] {
+    const p = this.practices.get(folderId)
+    if (!p) throw new Error(`Pratica sconosciuta: ${folderId}`)
+    return [...p.docs.values()].map((d) => ({
+      docId: d.docId,
+      fileName: basename(d.filePath),
+      status: d.status,
+      sensitive: d.result?.sensitive ?? false
+    }))
+  }
+
   /** Documenti esponibili come resource: solo quelli approvati. */
   exposableDocs(): { folderId: string; doc: DocEntry }[] {
     const out: { folderId: string; doc: DocEntry }[] = []

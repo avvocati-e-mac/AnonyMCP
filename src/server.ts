@@ -13,9 +13,22 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod'
 import type { AnonyMcpConfig } from './types.js'
 import { PracticeRegistry } from './practice/practiceRegistry.js'
+import { REGEX_PATTERNS } from './engine/regexPatterns.js'
 import { log } from './util/logger.js'
 
 const RESOURCE_SCHEME = 'anonymcp'
+
+/**
+ * True se la query contiene un identificatore PII (CF/IBAN/email/PEC/…).
+ * Difesa contro l'uso di `search` per confermare la presenza di un dato reale
+ * (boolean-inference): la ricerca opera comunque su testo pseudonimizzato, ma
+ * rifiutiamo esplicitamente query che sono esse stesse dati personali.
+ */
+function queryLooksLikePII(query: string): boolean {
+  return REGEX_PATTERNS.some(({ pattern }) =>
+    new RegExp(pattern.source, pattern.flags).test(query)
+  )
+}
 
 /** Costruisce un URI resource opaco per un documento approvato. */
 function docUri(folderId: string, docId: string): string {
@@ -179,6 +192,17 @@ export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): B
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
     async ({ query, limit }) => {
+      if (queryLooksLikePII(query)) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: 'Query rifiutata: contiene un identificatore personale (CF/IBAN/email/…). Cerca per placeholder (es. "M. R.", "CF_001") o testo generico, non per dato reale.'
+            }
+          ]
+        }
+      }
       const q = query.toLowerCase()
       const hits: { uri: string; excerpt: string }[] = []
       for (const { folderId, doc } of registry.exposableDocs()) {
