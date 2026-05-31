@@ -1,0 +1,167 @@
+// ============================================================
+// practiceRegistry — stato in RAM delle pratiche e dei documenti:
+// scansione cartelle, stato quarantena/approvato, risultati di
+// pseudonimizzazione. Coordina engine + cache cifrata + classificazione.
+//
+// La mappa reversibile reale↔pseudonimo NON è qui: vive nel SessionManager
+// (RAM) e non viene mai serializzata in chiaro.
+// ============================================================
+
+import { readdirSync, statSync, readFileSync } from 'node:fs'
+import { join, basename, extname } from 'node:path'
+import type { AnonymizationResult, DocumentStatus, ExposedFolder } from '../types.js'
+import { isSupported, isTextDocument } from '../pipeline/toMarkdown.js'
+import { processText } from '../pipeline/documentService.js'
+import { SessionManager } from '../engine/sessionManager.js'
+import { classifySensitivity } from '../pipeline/riskScorer.js'
+import { sanitizeId, isInternalArtifact } from '../util/pathGuard.js'
+import { sha256 } from '../util/crypto.js'
+import { log } from '../util/logger.js'
+
+export interface DocEntry {
+  /** Id opaco usato nell'URI della resource (non rivela il nome file reale). */
+  docId: string
+  filePath: string
+  status: DocumentStatus
+  /** Risultato pseudonimizzato (presente dopo la scansione). */
+  result?: AnonymizationResult
+}
+
+export interface PracticeEntry {
+  folder: ExposedFolder
+  /** SessionManager condiviso tra i documenti della pratica (coerenza pseudonimi). */
+  session: SessionManager
+  docs: Map<string, DocEntry>
+}
+
+export class PracticeRegistry {
+  private practices = new Map<string, PracticeEntry>()
+  /** Callback invocata quando cambia l'elenco di resource (per listChanged). */
+  onResourcesChanged?: () => void
+
+  constructor(
+    private folders: ExposedFolder[],
+    private requireManualApproval: boolean
+  ) {
+    for (const folder of folders) {
+      this.practices.set(folder.id, { folder, session: new SessionManager(), docs: new Map() })
+    }
+  }
+
+  listFolders(): ExposedFolder[] {
+    return this.folders
+  }
+
+  getPractice(folderId: string): PracticeEntry | undefined {
+    return this.practices.get(folderId)
+  }
+
+  /** File supportati e non-artefatti dentro una cartella pratica. */
+  private listFiles(folderPath: string): string[] {
+    let names: string[]
+    try {
+      names = readdirSync(folderPath)
+    } catch {
+      return []
+    }
+    return names
+      .map((n) => join(folderPath, n))
+      .filter((p) => {
+        try {
+          return statSync(p).isFile() && isSupported(p) && !isInternalArtifact(p)
+        } catch {
+          return false
+        }
+      })
+  }
+
+  /** Genera un docId opaco e stabile per un file (no nome reale nell'URI). */
+  private docIdFor(filePath: string): string {
+    return sanitizeId(sha256(filePath).slice(0, 16) + extname(filePath))
+  }
+
+  /**
+   * (Ri)scansiona una pratica: pseudonimizza ogni documento testuale.
+   * I documenti restano in quarantena se requireManualApproval è attivo.
+   * Ritorna un sommario (senza valori reali).
+   */
+  async scan(folderId: string): Promise<{ scanned: number; quarantined: number; skipped: number }> {
+    const practice = this.practices.get(folderId)
+    if (!practice) throw new Error(`Pratica sconosciuta: ${folderId}`)
+
+    let scanned = 0
+    let quarantined = 0
+    let skipped = 0
+
+    for (const filePath of this.listFiles(practice.folder.path)) {
+      if (!isTextDocument(filePath)) {
+        skipped++ // binari rimandati alla Fase 2
+        continue
+      }
+      const docId = this.docIdFor(filePath)
+      const raw = readFileSync(filePath, 'utf8')
+      const result = await processText(raw, { session: practice.session })
+      const status: DocumentStatus = this.requireManualApproval ? 'quarantined' : 'approved'
+      practice.docs.set(docId, { docId, filePath, status, result })
+      scanned++
+      if (status === 'quarantined') quarantined++
+      log.info('Documento processato', { folderId, docId, status, sensitive: result.sensitive })
+    }
+
+    this.onResourcesChanged?.()
+    return { scanned, quarantined, skipped }
+  }
+
+  /** Approva un documento in quarantena (human-in-the-loop). */
+  approve(folderId: string, docId: string): boolean {
+    const doc = this.practices.get(folderId)?.docs.get(docId)
+    if (!doc) return false
+    doc.status = 'approved'
+    this.onResourcesChanged?.()
+    return true
+  }
+
+  /** Documenti esponibili come resource: solo quelli approvati. */
+  exposableDocs(): { folderId: string; doc: DocEntry }[] {
+    const out: { folderId: string; doc: DocEntry }[] = []
+    for (const [folderId, p] of this.practices) {
+      for (const doc of p.docs.values()) {
+        if (doc.status === 'approved') out.push({ folderId, doc })
+      }
+    }
+    return out
+  }
+
+  /** Stato di una pratica (conteggi, NON valori reali). */
+  status(folderId: string): {
+    label: string
+    approved: number
+    quarantined: number
+    entitiesByType: Record<string, number>
+    sensitiveDocs: number
+  } {
+    const p = this.practices.get(folderId)
+    if (!p) throw new Error(`Pratica sconosciuta: ${folderId}`)
+    let approved = 0
+    let quarantined = 0
+    let sensitiveDocs = 0
+    for (const doc of p.docs.values()) {
+      if (doc.status === 'approved') approved++
+      else quarantined++
+      if (doc.result?.sensitive) sensitiveDocs++
+    }
+    return {
+      label: p.folder.label,
+      approved,
+      quarantined,
+      entitiesByType: p.session.getStats().byType,
+      sensitiveDocs
+    }
+  }
+}
+
+/** Riesporta per i tool. */
+export { classifySensitivity }
+export function shortName(filePath: string): string {
+  return basename(filePath)
+}

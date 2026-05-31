@@ -1,0 +1,41 @@
+{
+  "civile_citazione.md": {
+    "name": "civile_citazione.md",
+    "matter": "civile",
+    "sensitive": false,
+    "mustNotLeak": [
+      "Mario Rossi",
+      "BNCLRA75M41F205Z",
+      "mario.rossi@example.com",
+      "IT60X0542811101000000123456"
+    ]
+  },
+  "penale_memoria.md": {
+    "name": "penale_memoria.md",
+    "matter": "penale",
+    "sensitive": true,
+    "mustNotLeak": [
+      "Luca Verdi",
+      "VRDLCU82T10G273K",
+      "3331234567"
+    ]
+  },
+  "tributario_ricorso.md": {
+    "name": "tributario_ricorso.md",
+    "matter": "tributario",
+    "sensitive": false,
+    "mustNotLeak": [
+      "Gamma S.p.A.",
+      "98765432109"
+    ]
+  },
+  "amministrativo_ricorso_tar.md": {
+    "name": "amministrativo_ricorso_tar.md",
+    "matter": "amministrativo",
+    "sensitive": false,
+    "mustNotLeak": [
+      "Giulia Ferrari",
+      "giulia.ferrari@pec.comune.example.it"
+    ]
+  }
+}
