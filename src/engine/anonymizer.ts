@@ -18,6 +18,24 @@ export interface RawEntity {
   type: EntityType
   text: string
   source: DetectedEntity['source']
+  /** Offset di inizio nel testo (se noto). Usato per risolvere le sovrapposizioni. */
+  start?: number
+}
+
+/**
+ * Priorità di tipo per risolvere sovrapposizioni a parità di span: un valore
+ * più alto vince. Gli identificatori formali con checksum/struttura forte
+ * battono quelli più deboli (es. un CF di 16 char non va spezzato in PIVA).
+ */
+const TYPE_PRIORITY: Partial<Record<EntityType, number>> = {
+  CODICE_FISCALE: 10,
+  IBAN: 9,
+  PEC: 8,
+  EMAIL: 7,
+  PARTITA_IVA: 6,
+  NUMERO_RUOLO: 5,
+  PROTOCOLLO: 4,
+  TELEFONO: 3
 }
 
 /** Normalizza una stringa per il confronto col veto filter. */
@@ -53,7 +71,12 @@ export function extractRegexEntities(text: string): RawEntity[] {
       // Usa il primo gruppo di cattura non vuoto, altrimenti l'intero match.
       const captured = m.slice(1).find((g) => g != null && g !== '') ?? m[0]
       const value = captured.trim()
-      if (value.length > 1) out.push({ type, text: value, source: 'regex' })
+      if (value.length > 1) {
+        // Offset del valore catturato dentro il testo (per risolvere overlap).
+        const within = m[0].indexOf(captured)
+        const start = m.index + (within >= 0 ? within : 0)
+        out.push({ type, text: value, source: 'regex', start })
+      }
       if (m.index === re.lastIndex) re.lastIndex++ // evita loop su match vuoti
     }
   }
@@ -89,6 +112,44 @@ function dedupe(entities: RawEntity[]): RawEntity[] {
   return [...seen.values()]
 }
 
+/**
+ * Risolve le sovrapposizioni tra entità con offset noto: se lo span di una è
+ * contenuto in quello di un'altra, scarta quella contenuta (longest-match).
+ * A parità di span vince il tipo a priorità più alta (es. CF batte PARTITA_IVA
+ * su uno stesso numero). Le entità senza offset (NER/coref) non vengono toccate.
+ */
+export function resolveOverlaps(entities: RawEntity[]): RawEntity[] {
+  const withPos = entities.filter((e) => e.start != null)
+  const withoutPos = entities.filter((e) => e.start == null)
+
+  const dropped = new Set<number>()
+  for (let i = 0; i < withPos.length; i++) {
+    for (let j = 0; j < withPos.length; j++) {
+      if (i === j || dropped.has(i) || dropped.has(j)) continue
+      const a = withPos[i]!
+      const b = withPos[j]!
+      const aStart = a.start!
+      const aEnd = aStart + a.text.length
+      const bStart = b.start!
+      const bEnd = bStart + b.text.length
+      const overlap = aStart < bEnd && bStart < aEnd
+      if (!overlap) continue
+      // a contiene b (più lungo) → scarta b; a parità di span, decide la priorità.
+      const aLen = a.text.length
+      const bLen = b.text.length
+      if (aLen > bLen) dropped.add(j)
+      else if (bLen > aLen) dropped.add(i)
+      else {
+        const pa = TYPE_PRIORITY[a.type] ?? 0
+        const pb = TYPE_PRIORITY[b.type] ?? 0
+        if (pa >= pb) dropped.add(j)
+        else dropped.add(i)
+      }
+    }
+  }
+  return [...withPos.filter((_, idx) => !dropped.has(idx)), ...withoutPos]
+}
+
 export interface DetectOptions {
   /** Funzione NER opzionale (BERT/ONNX). Default: nessuna (solo regex). */
   ner?: NerFn
@@ -106,7 +167,7 @@ export async function detectEntities(
 ): Promise<{ entities: DetectedEntity[]; session: SessionManager }> {
   const session = options.session ?? new SessionManager()
 
-  const raw: RawEntity[] = [...extractRegexEntities(text)]
+  let raw: RawEntity[] = [...extractRegexEntities(text)]
 
   if (options.ner) {
     const nerEntities = await options.ner(text)
@@ -115,6 +176,9 @@ export async function detectEntities(
       raw.push(e)
     }
   }
+
+  // Risolve le sovrapposizioni di span (longest-match / priorità tipo).
+  raw = resolveOverlaps(raw)
 
   const corefs = findCoreferences(text, raw)
 
