@@ -80,6 +80,10 @@ una decisione ADR esistente è un errore critico.
   sì è critico perché il label è esposto all'LLM via `list_folders` (ADR-004).
 
 ## Sviluppo con assistenti CLI + commit atomici
+- **Capisci lo SCOPO prima di modificare.** Prima di riscrivere/semplificare qualcosa,
+  articola esplicitamente *a cosa serve per l'utente* e verifica che la modifica preservi
+  quello scopo. Semplificare non deve mai buttare via la funzione reale. **Se lo scopo non
+  è chiaro, CHIEDI esplicitamente** (AskUserQuestion) invece di assumere.
 - **Plan mode** prima di scrivere; task atomici (5–10 min); review del diff prima del commit.
 - **Commit atomico = una decisione**, reversibile con `git revert`. Test + doc nello **stesso
   commit** del codice. Messaggio che spiega il *perché* + `Co-Authored-By: Claude Opus 4.8
