@@ -1,123 +1,176 @@
 # Architettura di AnonyMCP
 
-> Documento di architettura puntuale dell'app e del server MCP. Frutto di ricerca
-> (spec MCP 2025-11-25, antirez, Garante/EDPB) e di tre consigli LLM di red teaming.
+Riferimento operativo passo-passo dell'app e del server MCP — pensato per essere usato sia da
+una persona sia da un LLM. Per le regole sintetiche vedi [CLAUDE.md](CLAUDE.md); per il
+dettaglio, le guide in [docs/agent-guides/](docs/agent-guides/).
+
+## Contents
+- 1. Scopo e principio
+- 2. Le due fasi
+- 3. Architettura a blocchi (diagramma)
+- 4. Pipeline di un documento (passo-passo + flowchart)
+- 5. Flusso MCP: scan → quarantena → approvazione → read (sequence)
+- 6. Stati di un documento (state machine)
+- 7. Sicurezza e privacy
+- 8. Token-minimization (Fase 2)
+- 9. Processo di sviluppo (come è stato costruito)
+- 10. Formula consiglio LLM ripetibile
+- 11. Limiti noti
+
+---
 
 ## 1. Scopo e principio
+Server MCP **locale** che **pseudonimizza** i documenti di una pratica *prima* di esporli a un
+LLM. È l'utente a scegliere le cartelle. Nulla di sensibile lascia la macchina in chiaro.
 
-AnonyMCP è un **server MCP locale** che **pseudonimizza** i documenti di una pratica
-*prima* di esporli a un LLM (Claude/GPT/Gemini, o un LLM locale). È l'utente a scegliere
-quali cartelle esporre. Nulla di sensibile lascia la macchina in chiaro.
-
-> ⚠️ **Pseudonimizzazione, non anonimizzazione.** Ai sensi del Garante e dell'EDPB
-> (linee guida gen 2025), il testo prodotto resta **dato personale**: i 3 test del Garante
-> — *single-out*, *linkability*, *inference* — possono comunque fallire per
-> re-identificazione da contesto. Vedi §7.
+> ⚠️ **Pseudonimizzazione, non anonimizzazione** (Garante/EDPB): l'output resta dato personale
+> e può consentire re-identificazione da contesto. Vedi §7 e
+> [threat-model](docs/agent-guides/threat-model.md).
 
 ## 2. Le due fasi
+- **Fase 1 (questo repo)** — server MCP stdio standalone, cartelle in `anonymcp.config.json`,
+  documenti testuali (`.txt`/`.md`).
+- **Fase 2** — app Electron (evoluzione di Anonimator): UI consenso cartelle, log live,
+  parser binari (PDF/DOCX/OCR), NER Italian-Legal-BERT in worker, generatori DPIA/registro.
+  Perché Electron e non Tauri: il motore è già Node/TS con native pesanti (riuso 1:1; Tauri
+  imporrebbe un sidecar Node). Dettaglio nel piano di progetto.
 
-- **Fase 1 (questo repo)** — server MCP stdio standalone. Le cartelle sono configurate a
-  mano in `anonymcp.config.json`. Gestisce documenti testuali (`.txt`, `.md`).
-- **Fase 2** — app desktop **Electron** (evoluzione di `avvocati-e-mac/anonimator`): UI di
-  consenso cartelle, log live, gestione pratiche, parser binari (PDF/DOCX/OCR), NER
-  Italian-Legal-BERT in worker, generatori DPIA/registro.
-
-## 3. Perché Electron (e non Tauri)
-
-Il motore di anonimizzazione è già Node/TS con dipendenze native pesanti
-(`@huggingface/transformers`, onnxruntime, tesseract, pdfjs). Electron include Node →
-riuso 1:1 e MCP server in-process. Tauri (Rust) imporrebbe un sidecar Node che annulla il
-vantaggio di peso (dominato comunque dai modelli ONNX). Confermato dal consiglio LLM.
-
-## 4. Pipeline di un documento
-
+## 3. Architettura a blocchi
+```mermaid
+flowchart TB
+  Client["Client MCP (Claude Desktop / Cursor / app)"]
+  subgraph Server["AnonyMCP server (stdio)"]
+    Tools["Tools: list_folders, scan_practice,\nget_practice_status, search"]
+    Res["Resources: anonymcp://practice/{folderId}/{docId}"]
+    Reg["PracticeRegistry (stato, quarantena)"]
+    subgraph Engine["engine + pipeline"]
+      Pipe["documentService"]
+      San["toMarkdown / metadataStripper"]
+      Anon["anonymizer (regex + coref + veto + NER)"]
+      Risk["riskScorer (sensibilità + rischio)"]
+      Sess["SessionManager (RAM)"]
+    end
+    Cache[("practiceStore: .anonymcp cifrato")]
+  end
+  FS[("Cartelle pratiche (allowlist)")]
+  Client <-->|JSON-RPC| Tools
+  Client <-->|resources/read| Res
+  Tools --> Reg --> Pipe --> San --> Anon --> Risk
+  Anon <--> Sess
+  Reg <-->|preload/save hash| Cache
+  Pipe -->|legge| FS
+  Res -->|solo testo pseudonimizzato| Client
 ```
-file → [strip metadati] → [sanitize Markdown] → [PSEUDONIMIZZA] → [classifica sensibilità]
-     → [rischio residuo] → quarantena → (approvazione umana) → Resource MCP
-                                                                    ↓
-                                            LLM (locale, o cloud se NON sensibile)
+
+## 4. Pipeline di un documento (passo-passo)
+Riferimento codice tra parentesi. Ordine **non negoziabile** (anonimizza prima di ogni
+artefatto persistente).
+
+```mermaid
+flowchart LR
+  A["file .txt/.md"] --> B["strip metadati\n(metadataStripper.ts)"]
+  B --> C["sanitize Markdown\n(toMarkdown.ts:sanitizeMarkdown)"]
+  C --> D["rileva entità\n(anonymizer.ts:detectEntities)"]
+  D --> E["risolvi overlap\n(resolveOverlaps)"]
+  E --> F["pseudonimi coerenti\n(sessionManager)"]
+  F --> G["sostituisci\n(applyPseudonyms)"]
+  G --> H["classifica sensibilità\n(riskScorer.classifySensitivity)"]
+  H --> I["rischio residuo\n(riskScorer.residualRisk)"]
+  I --> J["quarantena → approvazione"]
 ```
 
-Ordine **non negoziabile**: l'anonimizzazione precede qualsiasi artefatto persistente
-(chunk/indice/embedding). Motivo: gli **embedding sono invertibili** (attacchi GEIA),
-quindi indicizzare testo non anonimizzato = leak a riposo.
+1. **Strip metadati** (`pipeline/metadataStripper.ts`): rimuove autore, timestamp, owner,
+   percorsi di rete — spesso più ricchi di PII del testo.
+2. **Sanitize** (`pipeline/toMarkdown.ts:sanitizeMarkdown`): NFKC, decode entità HTML, rimozione
+   zero-width/tag HTML/link/frontmatter, unione sillabazione. Difende dall'evasione del NER
+   (`M**ari**o`, `M<span>ari</span>o`, `M&#97;rio`, …). Avviene **prima** della pseudonimizzazione.
+3. **Rileva entità** (`engine/anonymizer.ts:detectEntities`): regex (`regexPatterns.ts`) +
+   co-reference (il cognome eredita lo pseudonimo del nome completo) + veto filter
+   (`legalStopWords.ts`) + **NER iniettabile** (`NerFn`; Fase 2 = Italian-Legal-BERT).
+4. **Overlap** (`resolveOverlaps`): longest-match / priorità tipo (CF batte PARTITA_IVA su uno
+   stesso numero).
+5. **Pseudonimi** (`engine/sessionManager.ts`): coerenti (stesso testo → stesso pseudonimo),
+   solo in RAM. Coerenza tra sessioni via cache cifrata (`preloadByHash`).
+6. **Classifica + rischio** (`pipeline/riskScorer.ts`): marca art. 9/10 (penale/salute/minori)
+   e calcola un punteggio di re-identificazione residua (R.G./udienza/importi/IBAN).
+7. **Quarantena**: il documento non è esposto finché un umano non approva (default).
 
-Moduli (Fase 1): `pipeline/metadataStripper.ts`, `pipeline/toMarkdown.ts`,
-`engine/anonymizer.ts`, `pipeline/riskScorer.ts`, `pipeline/documentService.ts`.
+## 5. Flusso MCP: scan → quarantena → approvazione → read
+```mermaid
+sequenceDiagram
+  participant U as Utente
+  participant L as LLM/Client MCP
+  participant S as AnonyMCP server
+  participant R as PracticeRegistry
+  L->>S: tool anonymcp_scan_practice(folderId)
+  S->>R: scan() — pipeline su ogni doc
+  R-->>S: {scanned, quarantined}
+  Note over R: documenti in QUARANTENA (non esposti)
+  U->>R: approva (CLI/app, reviewList mostra il nome file — solo locale)
+  R-->>S: onResourcesChanged()
+  S--)L: notifications/resources/list_changed
+  L->>S: resources/read (anonymcp://practice/{folderId}/{docId})
+  S-->>L: solo testo pseudonimizzato
+```
 
-### Sanitizzazione (anti prompt-injection / anti evasione)
-`sanitizeMarkdown` rimuove frontmatter, commenti HTML, tag HTML, link/immagini esterni
-(SSRF/esfiltrazione) e **de-frammenta l'enfasi inline** (`M**ari**o` → `Mario`) così che il
-NER non venga evaso. L'anonimizzazione avviene sul testo de-frammentato, non sul Markdown.
-
-## 5. Il motore di pseudonimizzazione
-
-Portato da Anonimator, senza dipendenze Electron:
-- `engine/regexPatterns.ts` — pattern legali italiani (CF, P.IVA, IBAN, email, **PEC**,
-  telefono, indirizzi, targhe, date nascita, header sentenza, parti, difensori, **R.G.**,
-  **protocollo**).
-- `engine/legalStopWords.ts` — veto filter: ruoli processuali e intestazioni di sezione che
-  il BERT scambia per nomi.
-- `engine/sessionManager.ts` — dizionario `originale → pseudonimo` **solo in RAM**, coerente
-  (stesso testo → stesso pseudonimo), iniziali + fallback numerico. Mai su disco in chiaro.
-- `engine/anonymizer.ts` — regex + co-reference (il cognome eredita lo pseudonimo del nome
-  completo) + veto filter + **NER iniettabile** (`NerFn`). In Fase 1 il default è solo-regex;
-  in Fase 2 si inietta Italian-Legal-BERT (ONNX, in worker).
-
-## 6. Il server MCP (spec 2025-11-25)
-
-- **Trasporto**: stdio. Log **solo su stderr** (stdout è il canale JSON-RPC).
-- **Documenti = Resources** `anonymcp://practice/{folderId}/{docId}` (text/markdown), con
-  `resources/list` e capability **`listChanged`** (notifica quando cambia l'elenco). I
-  documenti sono passivi → Resources, non tool di lettura.
-- **URI opachi**: il `docId` è un hash del path (i nomi file reali non sono esposti).
-- **Solo documenti APPROVATI** sono esposti; quelli in quarantena no.
-
-### I 4 tool (solo *azioni*)
-| Tool | Annotation | Funzione |
-|---|---|---|
-| `anonymcp_list_folders` | readOnly | elenca le pratiche esposte |
-| `anonymcp_scan_practice` | idempotent | (ri)scansiona e pseudonimizza; quarantena |
-| `anonymcp_get_practice_status` | readOnly | conteggi (mai valori reali) |
-| `anonymcp_search` | readOnly | cerca placeholder/testo nei doc approvati → estratti + URI |
-
-**Assenti by design** (bocciati dal red teaming): `get_mapping`, `deanonymize`. La mappa
-reversibile vive solo in RAM lato server; la de-anonimizzazione, se serve, è fatta da un
-**proxy locale** sulla risposta dell'LLM verso l'utente — mai come tool MCP (eviterebbe il
-leak del dato reale via prompt-injection).
+## 6. Stati di un documento
+```mermaid
+stateDiagram-v2
+  [*] --> Quarantined: scan_practice
+  Quarantined --> Approved: approvazione umana
+  Approved --> [*]: esposto come Resource
+  note right of Quarantined
+    non listato tra le Resources
+    (requireManualApproval = on)
+  end note
+```
 
 ## 7. Sicurezza e privacy
+Sintesi; dettaglio in [security-invariants](docs/agent-guides/security-invariants.md) e
+[threat-model](docs/agent-guides/threat-model.md).
+- Mappa reale↔pseudonimo **solo in RAM**; nessun tool MCP di de-anonimizzazione.
+- Cache `.anonymcp` **cifrata** (AES-256-GCM), solo hash, esclusa dalle Resources; invalidata
+  se `sourceHash`/`engineVersion` cambiano.
+- **docId opaco** (HMAC con chiave di sessione), nessun nome file negli URI.
+- **Dati art. 9/10 mai a LLM cloud** (solo LLM locale).
+- `pathGuard` (allowlist + no traversal), logging solo su stderr, quarantena di default.
 
-- **Quarantena + approvazione umana** (`requireManualApproval`, default on): un documento
-  appena scansionato non è esposto finché un umano non lo approva.
-- **Cache pratica cifrata** (`practice/practiceStore.ts`): blob `.anonymcp` AES-256-GCM,
-  accanto ai documenti, **senza PII in chiaro** (solo `sha256(originale)`), invalidata se
-  `sourceHash`/`engineVersion` cambiano, sempre esclusa dalle Resources.
-- **pathGuard** (`util/pathGuard.ts`): no directory traversal, allowlist cartelle, blocco
-  artefatti interni.
-- **Dati sensibili (art. 9/10 GDPR) → mai a LLM cloud**: `riskScorer.classifySensitivity`
-  marca penale/salute/minori/vita sessuale/convinzioni; tali documenti vanno serviti solo a
-  LLM locale (Fase 2 applica il blocco verso endpoint cloud).
-- **Rischio residuo** (`riskScorer.residualRisk`): segnali di linkability ancora presenti
-  (R.G., udienza, importi, IBAN) alzano il punteggio; sopra soglia → blocco/doppia approvazione.
-
-### Obblighi legali (studio legale italiano)
-- Cifratura fascicoli (art. 32 GDPR) → cache/indice cifrati.
-- Segreto professionale (art. 13 C.D.F.; base art. 9(3) GDPR) → nulla esce non pseudonimizzato.
-- Oscuramento obbligatorio categorie protette (vittime, minori — art. 52 D.Lgs. 196/2003) →
-  modalità "safe export" (Fase 2).
-- DPIA + registro dei trattamenti per dati penali/sanitari massivi (Fase 2: template).
+### Obblighi legali (studio legale IT)
+Cifratura fascicoli (art. 32), segreto professionale (art. 13 C.D.F.), oscuramento obbligatorio
+categorie protette (art. 52 D.Lgs. 196/2003), DPIA per dati penali/sanitari massivi.
 
 ## 8. Token-minimization (Fase 2)
+Esporre **chunk rilevanti** pseudonimizzati, non documenti interi, indicizzati con **BM25
+cifrato** (SQLite FTS5 + SQLCipher; non vettori, over-engineering senza GPU). Ricerca per nome
+reale via **query-translator locale** (reale→placeholder), mai dal server MCP.
 
-Invece di interi documenti, si espongono **chunk rilevanti** già pseudonimizzati, indicizzati
-con **BM25 cifrato** (SQLite FTS5 + SQLCipher; non vettori, over-engineering senza GPU). La
-ricerca per nome reale passa per un **query-translator locale** (reale→placeholder via vault
-cifrato), mai dal server MCP. Vettori solo come fase 3 se il recall lo richiede.
+## 9. Processo di sviluppo (come è stato costruito)
+Metodo human-in-the-loop (antirez), commit atomici, decisioni validate da consigli LLM. Storia:
+- **Ricerca**: spec MCP 2025-11-25, Electron vs Tauri, Docling/parser, NER italiano, Garante/EDPB.
+- **4 consigli LLM** (GPT-5.4, Gemini 3.1 Pro, Kimi K2.6 via Perplexity), ciascuno ha cambiato il progetto:
+  1. Architettura → rimossi tool de-anon, documenti come Resources, cache cifrata, quarantena.
+  2. Pipeline/sicurezza → anonimizza prima dell'indice, **Docling bocciato** (CVE-2026-24009),
+     Markdown sanitizzato, BM25 non vettori.
+  3. Alternative + legale → mupdf.js AGPL, **Italian-Legal-BERT**, dati sensibili mai al cloud,
+     re-identificazione da contesto/metadati.
+  4. Red team dello stato implementato → fix docId/HMAC, preload cache, sanitizer hardening,
+     overlap, search guard, threat model.
+- Ogni fix = **commit atomico** (revertibile) con test + doc. Dettaglio e formula in
+  [development-process](docs/agent-guides/development-process.md).
 
-## 9. Limiti noti / non-deployabile "as-is"
+## 10. Formula consiglio LLM ripetibile
+Template vincolante da compilare prima di proporre/valutare una modifica (sintesi; versione
+completa in [development-process](docs/agent-guides/development-process.md)):
+```
+Obiettivo · Invarianti · Minaccia/bug · Patch minima · Test (pos/neg/abuse) ·
+Doc update · Rollback · GATE Accept/Reject · Sanity check anti-PII
+```
+Council multi-modello: `pwm council "<contesto+domande>" -m gpt54,gemini_pro,kimi_k26 -s all`
+(su account Pro niente modelli Max-only). Poi **valuti tu** il responso: accogli ciò che riduce
+un rischio reale e verificabile, respingi il resto motivando.
 
-Il consiglio LLM ha dato verdetto **non deployabile in produzione legale senza remediation**.
-Vedi la checklist Go/No-Go nel piano. In sintesi mancano (per la produzione): NER
-specializzato legale validato, generalizzazione contestuale completa, audit trail immutabile +
-RBAC, DPIA/registro, e i parser binari sandboxati (Fase 2).
+## 11. Limiti noti
+Verdetto dei consigli: **non deployabile in produzione legale senza remediation**. Mancano
+(Fase 2): NER legale validato, keychain OS per la chiave cache, generalizzazione contestuale,
+audit trail immutabile + RBAC, parser binari sandboxati, DPIA/registro. Checklist Go/No-Go nel
+piano di progetto.
