@@ -1,9 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, existsSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PracticeRegistry } from '../src/practice/practiceRegistry.js'
-import { APPROVAL_FILENAME } from '../src/practice/approvalStore.js'
+import { APPROVAL_FILENAME, approvalPath } from '../src/practice/approvalStore.js'
 
 let dirs: string[] = []
 function tmp(content: string): string {
@@ -60,6 +60,23 @@ describe('persistenza dello stato di approvazione (TUI ↔ server)', () => {
     const changed = server.refreshApprovals('400f')
     expect(changed).toBe(true)
     expect(server.exposableDocs()).toHaveLength(1)
+    server.closeIndexes()
+  })
+
+  it('refreshApprovals REVOCA l esposizione se l approvazione sparisce dal disco', async () => {
+    const dir = tmp(DOC)
+    const server = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    await server.scan('400f')
+    const docId = server.getPractice('400f')!.docs.keys().next().value as string
+    server.approve('400f', docId)
+    expect(server.exposableDocs()).toHaveLength(1)
+
+    // L'approvazione viene rimossa dal disco (revoca esterna).
+    unlinkSync(approvalPath(dir))
+    const changed = server.refreshApprovals('400f')
+    expect(changed).toBe(true)
+    expect(server.exposableDocs()).toHaveLength(0) // esposizione ritirata
+    expect(server.search('400f', 'risoluzione')).toHaveLength(0) // rimosso dall'indice
     server.closeIndexes()
   })
 

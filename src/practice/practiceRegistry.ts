@@ -268,13 +268,23 @@ export class PracticeRegistry {
   refreshApprovals(folderId: string): boolean {
     const practice = this.practices.get(folderId)
     if (!practice) return false
+    // Con auto-approve non c'è gate di review: lo stato non dipende dal file su disco.
+    if (!this.requireManualApproval) return false
     const approvals = loadApprovals(practice.folder.path)
     let changed = false
     for (const doc of practice.docs.values()) {
       const nowApproved = isApproved(approvals, doc.sourceHash)
       if (nowApproved && doc.status !== 'approved') {
+        // Promozione: la TUI ha approvato → esponi e indicizza.
         doc.status = 'approved'
         if (doc.result) this.indexDoc(practice, doc.docId, doc.result.text)
+        changed = true
+      } else if (!nowApproved && doc.status === 'approved') {
+        // Revoca: l'approvazione è sparita dal disco (revocata o file cambiato) →
+        // ritira l'esposizione e rimuovi dall'indice. È un gate di sicurezza:
+        // niente esposizione senza approvazione valida.
+        doc.status = 'review_required'
+        practice.index?.removeDocument(doc.docId)
         changed = true
       }
     }
