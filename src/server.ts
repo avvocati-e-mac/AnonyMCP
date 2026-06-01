@@ -35,6 +35,27 @@ function docUri(folderId: string, docId: string): string {
   return `${RESOURCE_SCHEME}://practice/${folderId}/${docId}`
 }
 
+/**
+ * Istruzioni di revisione passo-passo per un avvocato non esperto di informatica.
+ * Claude le riceve nello status e le riformula in linguaggio naturale e rassicurante.
+ * Nella Fase 2 (app Electron) questo diventerà un pulsante "Rivedi documenti".
+ */
+function reviewInstructions(
+  folderId: string,
+  count: number
+): { messaggio: string; come_fare: string[] } {
+  return {
+    messaggio: `Ci sono ${count} document${count === 1 ? 'o' : 'i'} da controllare prima che io possa leggerli.`,
+    come_fare: [
+      "1. Apri l'applicazione Terminale sul tuo Mac (cercala con Spotlight: ⌘+Spazio, scrivi 'Terminale').",
+      '2. Copia e incolla questo comando, poi premi Invio:',
+      `   npm run review -- --practice ${folderId}`,
+      '3. Controlla le parole evidenziate: spunta quelle corrette, togli quelle sbagliate.',
+      '4. Premi Invio per confermare. Poi torna qui e richiedimi quello che ti serve.'
+    ]
+  }
+}
+
 export interface BuiltServer {
   server: McpServer
   registry: PracticeRegistry
@@ -162,9 +183,15 @@ export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): B
     async ({ folderId }) => {
       try {
         const status = registry.status(folderId)
+        // Se ci sono documenti da revisionare, allega istruzioni passo-passo pensate
+        // per un avvocato non esperto di informatica. Claude le riformula all'utente.
+        const payload =
+          status.reviewRequired > 0
+            ? { ...status, ...reviewInstructions(folderId, status.reviewRequired) }
+            : status
         return {
-          content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
-          structuredContent: status
+          content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+          structuredContent: payload
         }
       } catch (err) {
         return {
@@ -203,16 +230,13 @@ export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): B
           ]
         }
       }
-      const q = query.toLowerCase()
+      // Ricerca BM25 (SQLite FTS5) su tutte le pratiche: solo i documenti APPROVATI
+      // sono indicizzati → hard gate implicito (vedi ADR-0002). Ritorna chunk ranked.
       const hits: { uri: string; excerpt: string }[] = []
-      for (const { folderId, doc } of registry.exposableDocs()) {
-        if (!doc.result) continue
-        const text = doc.result.text
-        const idx = text.toLowerCase().indexOf(q)
-        if (idx >= 0) {
-          const start = Math.max(0, idx - 60)
-          const end = Math.min(text.length, idx + q.length + 60)
-          hits.push({ uri: docUri(folderId, doc.docId), excerpt: text.slice(start, end).trim() })
+      for (const folder of registry.listFolders()) {
+        for (const hit of registry.search(folder.id, query, limit)) {
+          hits.push({ uri: docUri(folder.id, hit.docId), excerpt: hit.excerpt.trim() })
+          if (hits.length >= limit) break
         }
         if (hits.length >= limit) break
       }

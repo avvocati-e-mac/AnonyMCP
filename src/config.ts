@@ -5,7 +5,8 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { z } from 'zod'
-import type { AnonyMcpConfig } from './types.js'
+import type { AnonyMcpConfig, ExposedFolder } from './types.js'
+import { log } from './util/logger.js'
 
 const FolderSchema = z.object({
   id: z.string().min(1),
@@ -43,7 +44,34 @@ export function loadConfig(configPath: string): AnonyMcpConfig {
   const config = result.data
   // Normalizza i percorsi delle cartelle ad assoluti.
   config.folders = config.folders.map((f) => ({ ...f, path: resolve(f.path) }))
+  // Avvisa se un label di pratica sembra contenere nomi delle parti (ADR-0004):
+  // il label è esposto all'LLM via list_folders → userà un numero opaco (es. "400F").
+  for (const folder of config.folders) {
+    if (labelLooksLikePersonName(folder.label)) {
+      log.warn(
+        `Label pratica "${folder.label}" sembra contenere nomi di persona. ` +
+          'Il label è esposto all\'LLM: usa un numero di pratica opaco (es. "400F") ' +
+          'per non rivelare le parti. Vedi ADR-0004.',
+        { folderId: folder.id }
+      )
+    }
+  }
   return config
+}
+
+/**
+ * Euristica: il label sembra un nome di persona/causa identificabile?
+ * Riconosce pattern come "Rossi c. Bianchi", "Mario Rossi", "Studio Verdi".
+ * Conservativa: meglio un warning in più che un leak silenzioso. Vedi ADR-0004.
+ */
+export function labelLooksLikePersonName(label: string): boolean {
+  const trimmed = label.trim()
+  // "X c. Y" / "X contro Y" — citazione tipica di una causa con le parti.
+  if (/\b(c\.|contro)\b/i.test(trimmed) && /[A-ZÀ-Ý][a-zà-ÿ]+/.test(trimmed)) return true
+  // Due o più parole capitalizzate consecutive (es. "Mario Rossi", "Studio Legale Verdi).
+  const capitalizedWords = trimmed.match(/\b[A-ZÀ-Ý][a-zà-ÿ]{2,}\b/g) ?? []
+  if (capitalizedWords.length >= 2) return true
+  return false
 }
 
 /** Elenco dei percorsi assoluti delle cartelle esposte (allowlist). */
