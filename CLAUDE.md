@@ -107,11 +107,14 @@ src/
   config.ts     load/validate (Zod)     types.ts    tipi condivisi
   engine/       pseudonimizzazione (regex, sessionManager, anonymizer, legalStopWords)
   pipeline/     toMarkdown, metadataStripper, riskScorer, documentService
-  practice/     practiceStore (cache cifrata), practiceRegistry (stato/quarantena)
+  practice/     practiceStore (cache cifrata), practiceRegistry (stato/review), entityDictionary
+  search/       chunkIndex (BM25 su SQLite FTS5)
+  tui/          review TUI Ink (Fase 1): entityColors, highlight, reviewApp
   util/         logger (stderr), crypto (AES-GCM/HMAC), pathGuard
 test/           vitest (unit + anti-leak + e2e + redteam)
+docs/adr/       Architecture Decision Records (decisioni vincolanti)
 docs/agent-guides/  guide di dettaglio (Tier-3)
 ```
 
-> Stato: Fase 1 implementata (94 test verdi). **Non** ancora deployabile in produzione legale:
+> Stato: Fase 1 implementata (141 test verdi). **Non** ancora deployabile in produzione legale:
 > vedi checklist Go/No-Go nel piano e i gap in [threat-model](docs/agent-guides/threat-model.md).
