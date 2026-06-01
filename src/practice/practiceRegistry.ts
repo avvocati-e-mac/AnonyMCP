@@ -18,6 +18,12 @@ import { sanitizeId, isInternalArtifact } from '../util/pathGuard.js'
 import { hmac, randomKey, sha256 } from '../util/crypto.js'
 import { buildCache, saveCache, loadCache } from './practiceStore.js'
 import { buildDictionary, saveDictionary, loadDictionary } from './entityDictionary.js'
+import {
+  loadApprovals,
+  recordApproval,
+  isApproved,
+  fileSourceHash
+} from './approvalStore.js'
 import { ChunkIndex, indexPath } from '../search/chunkIndex.js'
 import { log } from '../util/logger.js'
 
@@ -26,6 +32,8 @@ export interface DocEntry {
   docId: string
   filePath: string
   status: DocumentStatus
+  /** Hash del contenuto del file (lega l'approvazione a questa versione). */
+  sourceHash: string
   /** Risultato pseudonimizzato (presente dopo la scansione). */
   result?: AnonymizationResult
 }
@@ -155,6 +163,9 @@ export class PracticeRegistry {
       log.info('Dizionario pratica precaricato', { folderId, entries: n })
     }
 
+    // Stato di approvazione persistito (condiviso con la TUI/altri processi).
+    const approvals = loadApprovals(practice.folder.path)
+
     let scanned = 0
     let reviewRequired = 0
     let approved = 0
@@ -163,9 +174,14 @@ export class PracticeRegistry {
     for (const filePath of files) {
       const docId = this.docIdFor(filePath)
       const raw = readFileSync(filePath, 'utf8')
+      const docHash = fileSourceHash(raw)
       const result = await processText(raw, { session: practice.session })
-      const status: DocumentStatus = this.requireManualApproval ? 'review_required' : 'approved'
-      practice.docs.set(docId, { docId, filePath, status, result })
+      // Un documento è approvato se: auto-approve, OPPURE è stato approvato su disco
+      // (dalla TUI) E il file non è cambiato dall'approvazione (sourceHash combacia).
+      const isAutoApprove = !this.requireManualApproval
+      const status: DocumentStatus =
+        isAutoApprove || isApproved(approvals, docHash) ? 'approved' : 'review_required'
+      practice.docs.set(docId, { docId, filePath, status, sourceHash: docHash, result })
       allEntities.push(...result.entities)
       scanned++
       if (status === 'review_required') reviewRequired++
@@ -236,8 +252,39 @@ export class PracticeRegistry {
     if (!practice || !doc) return false
     doc.status = 'approved'
     if (doc.result) this.indexDoc(practice, docId, doc.result.text)
+    // Persiste l'approvazione su disco, così è visibile agli altri processi
+    // (es. il server di Claude Desktop) senza riavvio, legandola al sourceHash.
+    recordApproval(practice.folder.path, folderId, doc.sourceHash)
     this.onResourcesChanged?.()
     return true
+  }
+
+  /**
+   * Rilegge lo stato di approvazione dal disco e aggiorna i documenti in RAM.
+   * Permette al server long-running (Claude Desktop) di vedere le approvazioni
+   * fatte da un altro processo (la TUI) senza riavvio. Da chiamare prima di
+   * esporre/cercare. Ritorna true se qualche stato è cambiato.
+   */
+  refreshApprovals(folderId: string): boolean {
+    const practice = this.practices.get(folderId)
+    if (!practice) return false
+    const approvals = loadApprovals(practice.folder.path)
+    let changed = false
+    for (const doc of practice.docs.values()) {
+      const nowApproved = isApproved(approvals, doc.sourceHash)
+      if (nowApproved && doc.status !== 'approved') {
+        doc.status = 'approved'
+        if (doc.result) this.indexDoc(practice, doc.docId, doc.result.text)
+        changed = true
+      }
+    }
+    if (changed) this.onResourcesChanged?.()
+    return changed
+  }
+
+  /** Rilegge lo stato di approvazione di TUTTE le pratiche dal disco. */
+  refreshAllApprovals(): void {
+    for (const folderId of this.practices.keys()) this.refreshApprovals(folderId)
   }
 
   /**

@@ -42,17 +42,23 @@ function docUri(folderId: string, docId: string): string {
  */
 function reviewInstructions(
   folderId: string,
-  count: number
-): { messaggio: string; come_fare: string[] } {
+  count: number,
+  projectDir: string,
+  configPath: string
+): { messaggio: string; come_fare: string[]; nota: string } {
+  // Comando completo: entra nella cartella del progetto e passa la config esatta,
+  // così funziona anche quando il server è avviato da Claude Desktop con un cwd diverso.
+  const cmd = `cd "${projectDir}" && npm run review -- --practice ${folderId} --config "${configPath}"`
   return {
     messaggio: `Ci sono ${count} document${count === 1 ? 'o' : 'i'} da controllare prima che io possa leggerli.`,
     come_fare: [
       "1. Apri l'applicazione Terminale sul tuo Mac (cercala con Spotlight: ⌘+Spazio, scrivi 'Terminale').",
-      '2. Copia e incolla questo comando, poi premi Invio:',
-      `   npm run review -- --practice ${folderId}`,
+      '2. Copia e incolla questo comando (tutto su una riga), poi premi Invio:',
+      `   ${cmd}`,
       '3. Controlla le parole evidenziate: spunta quelle corrette, togli quelle sbagliate.',
-      '4. Premi Invio per confermare. Poi torna qui e richiedimi quello che ti serve.'
-    ]
+      '4. Premi Invio per confermare. Poi torna qui e richiedimi quello che ti serve (non serve riavviarmi).'
+    ],
+    nota: "Importante: NON modificare il comando, deve includere '--config' con il percorso corretto."
   }
 }
 
@@ -61,7 +67,18 @@ export interface BuiltServer {
   registry: PracticeRegistry
 }
 
-export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): BuiltServer {
+export interface BuildServerOptions {
+  cachePassphrase?: string
+  /** Cartella del progetto AnonyMCP (per il comando di review da suggerire). */
+  projectDir?: string
+  /** Percorso assoluto della config attiva (per il comando di review). */
+  configPath?: string
+}
+
+export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions = {}): BuiltServer {
+  const { cachePassphrase } = options
+  const projectDir = options.projectDir ?? process.cwd()
+  const configPath = options.configPath ?? 'anonymcp.config.json'
   const registry = new PracticeRegistry(
     config.folders,
     config.requireManualApproval,
@@ -88,14 +105,18 @@ export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): B
   server.registerResource(
     'documento-pseudonimizzato',
     new ResourceTemplate(`${RESOURCE_SCHEME}://practice/{folderId}/{docId}`, {
-      list: () => ({
-        resources: registry.exposableDocs().map(({ folderId, doc }) => ({
-          uri: docUri(folderId, doc.docId),
-          name: `${folderId}/${doc.docId}`,
-          title: `Documento pseudonimizzato (${folderId})`,
-          mimeType: 'text/markdown'
-        }))
-      })
+      list: () => {
+        // Rilegge le approvazioni dal disco: vede quelle fatte dalla TUI senza riavvio.
+        registry.refreshAllApprovals()
+        return {
+          resources: registry.exposableDocs().map(({ folderId, doc }) => ({
+            uri: docUri(folderId, doc.docId),
+            name: `${folderId}/${doc.docId}`,
+            title: `Documento pseudonimizzato (${folderId})`,
+            mimeType: 'text/markdown'
+          }))
+        }
+      }
     }),
     {
       title: 'Documento pseudonimizzato',
@@ -104,6 +125,7 @@ export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): B
     async (uri, variables) => {
       const folderId = String(variables.folderId)
       const docId = String(variables.docId)
+      registry.refreshApprovals(folderId)
       const doc = registry.getPractice(folderId)?.docs.get(docId)
       if (!doc || doc.status !== 'approved' || !doc.result) {
         throw new Error(
@@ -182,12 +204,13 @@ export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): B
     },
     async ({ folderId }) => {
       try {
+        registry.refreshApprovals(folderId)
         const status = registry.status(folderId)
         // Se ci sono documenti da revisionare, allega istruzioni passo-passo pensate
         // per un avvocato non esperto di informatica. Claude le riformula all'utente.
         const payload =
           status.reviewRequired > 0
-            ? { ...status, ...reviewInstructions(folderId, status.reviewRequired) }
+            ? { ...status, ...reviewInstructions(folderId, status.reviewRequired, projectDir, configPath) }
             : status
         return {
           content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
@@ -232,6 +255,7 @@ export function buildServer(config: AnonyMcpConfig, cachePassphrase?: string): B
       }
       // Ricerca BM25 (SQLite FTS5) su tutte le pratiche: solo i documenti APPROVATI
       // sono indicizzati → hard gate implicito (vedi ADR-0002). Ritorna chunk ranked.
+      registry.refreshAllApprovals() // vede le approvazioni della TUI senza riavvio
       const hits: { uri: string; excerpt: string }[] = []
       for (const folder of registry.listFolders()) {
         for (const hit of registry.search(folder.id, query, limit)) {

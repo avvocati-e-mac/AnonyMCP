@@ -10,6 +10,7 @@ anonymcp.config.json
 *.sqlite
 *.sqlite-journal
 *.entitydict.json
+*.approvals.json
 *.searchindex.db
 *.searchindex.db-*
 
