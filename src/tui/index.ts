@@ -4,50 +4,22 @@
 // Uso:
 //   npm run review -- --practice 400f [--config ./anonymcp.config.json]
 //
-// Scansiona la pratica e, per ogni documento in review_required, mostra la TUI
-// (lista entità colorata + anteprima originale/anonimizzato). All'approvazione
-// il documento diventa esponibile via MCP e ricercabile via BM25.
+// Scansiona la pratica e, per ogni documento in review_required, mostra la review
+// da terminale (documento intero con entità evidenziate + lista entità + aggiunta
+// manuale). All'approvazione il documento diventa esponibile via MCP e ricercabile.
 //
 // ⚠️ Provvisoria: la Fase 2 sarà un'app Electron grafica per gli avvocati.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
-import React from 'react'
-import { render } from 'ink'
 import { loadConfig } from '../config.js'
 import { PracticeRegistry } from '../practice/practiceRegistry.js'
 import { setLogLevel, log } from '../util/logger.js'
-import { ReviewApp } from './reviewApp.js'
-import type { DetectedEntity } from '../types.js'
+import { runReview } from './reviewApp.js'
 
 function argValue(flag: string): string | undefined {
   const i = process.argv.indexOf(flag)
   return i >= 0 ? process.argv[i + 1] : undefined
-}
-
-/** Mostra la TUI per un singolo documento e risolve con le entità confermate (o null se annullato). */
-function reviewOne(props: {
-  practiceLabel: string
-  fileName: string
-  originalText: string
-  anonymizedText: string
-  entities: DetectedEntity[]
-}): Promise<DetectedEntity[] | null> {
-  return new Promise((resolve) => {
-    const { unmount } = render(
-      React.createElement(ReviewApp, {
-        ...props,
-        onApprove: (confirmed) => {
-          unmount()
-          resolve(confirmed)
-        },
-        onCancel: () => {
-          unmount()
-          resolve(null)
-        }
-      })
-    )
-  })
 }
 
 async function main(): Promise<void> {
@@ -86,14 +58,19 @@ async function main(): Promise<void> {
     // Il testo originale viene letto dal file sorgente (già sul disco) SOLO per la
     // preview locale; non passa mai per il canale MCP.
     const originalText = safeRead(doc.filePath)
-    const confirmed = await reviewOne({
+    const result = await runReview({
       practiceLabel: folder.label,
       fileName: doc.filePath.split('/').pop() ?? doc.docId,
       originalText,
       anonymizedText: doc.result.text,
-      entities: doc.result.entities
+      entities: doc.result.entities,
+      onAddEntity: (term, type) => {
+        const entity = registry.addManualEntity(practiceId, doc.docId, term, type)
+        if (!entity) return null
+        return { entity, anonymizedText: doc.result!.text }
+      }
     })
-    if (confirmed) {
+    if (result) {
       registry.approve(practiceId, doc.docId)
       approvedCount++
     }
