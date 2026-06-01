@@ -25,7 +25,7 @@ export type EntityType =
   | 'PROTOCOLLO'
 
 /** Origine di un'entità rilevata — usato per filtri e diagnostica. */
-export type EntitySource = 'regex' | 'ner' | 'coref' | 'manual'
+export type EntitySource = 'regex' | 'ner' | 'coref' | 'manual' | 'dictionary'
 
 /** Una singola entità trovata in un documento. */
 export interface DetectedEntity {

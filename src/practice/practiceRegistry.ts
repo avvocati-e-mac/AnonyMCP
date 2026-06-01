@@ -13,6 +13,7 @@ import type { AnonymizationResult, DetectedEntity, DocumentStatus, ExposedFolder
 import { isSupported, isTextDocument } from '../pipeline/toMarkdown.js'
 import { processText } from '../pipeline/documentService.js'
 import { SessionManager } from '../engine/sessionManager.js'
+import { applyPseudonyms, buildEntityRegex } from '../engine/anonymizer.js'
 import { classifySensitivity } from '../pipeline/riskScorer.js'
 import { sanitizeId, isInternalArtifact } from '../util/pathGuard.js'
 import { hmac, randomKey, sha256 } from '../util/crypto.js'
@@ -192,7 +193,28 @@ export class PracticeRegistry {
       log.info('Documento processato', { folderId, docId, status, sensitive: result.sensitive })
     }
 
-    // Persiste la cache cifrata (solo hash) per la coerenza tra sessioni.
+    // SECONDA PASSATA (anti-leak): il dizionario di sessione si popola DURANTE il
+    // primo giro, quindi un documento processato presto può contenere ancora in
+    // chiaro una parte rilevata solo in un documento successivo (ordine alfabetico).
+    // Con la sessione ora completa, ri-processa ogni documento che potrebbe avere
+    // nuovi termini noti applicabili: `processText` riusa la stessa session, quindi
+    // `enrichFromKnownTerms` (al suo interno) ora trova anche le parti note tardi.
+    // Si ri-processa solo se il numero di entità note è cresciuto rispetto al 1° giro.
+    for (const doc of practice.docs.values()) {
+      if (!doc.result) continue
+      let raw2: string
+      try {
+        raw2 = readFileSync(doc.filePath, 'utf8')
+      } catch {
+        continue // file non più leggibile: tieni il risultato della prima passata
+      }
+      const before = doc.result.entities.length
+      const reprocessed = await processText(raw2, { session: practice.session })
+      if (reprocessed.entities.length !== before) {
+        doc.result = reprocessed
+        if (doc.status === 'approved') this.indexDoc(practice, doc.docId, reprocessed.text)
+      }
+    }
     if (this.cachePassphrase && scanned > 0) {
       const confirmed = !this.requireManualApproval // confermate solo se auto-approvate
       const cache = buildCache(folderId, sourceHash, allEntities, confirmed)
@@ -313,6 +335,64 @@ export class PracticeRegistry {
       occurrences: e.occurrences,
       source: e.source
     }))
+  }
+
+  /**
+   * Aggiunge MANUALMENTE un'entità a un documento (testo che il NER ha mancato:
+   * il falso negativo è il rischio più grave — PII in chiaro verso l'LLM). Genera
+   * lo pseudonimo coerente via SessionManager, conta le occorrenze e RI-APPLICA gli
+   * pseudonimi a tutto il testo del documento (`doc.result.text`). L'entità entra in
+   * `doc.result.entities`, quindi confluirà nel dizionario di pratica all'export.
+   *
+   * Ritorna l'entità creata, o null se il termine è vuoto o non compare nel testo
+   * originale del documento (non avrebbe alcun effetto). Uso LOCALE (TUI/app),
+   * mai esposto via MCP.
+   */
+  addManualEntity(
+    folderId: string,
+    docId: string,
+    originalText: string,
+    type: DetectedEntity['type']
+  ): DetectedEntity | null {
+    const practice = this.practices.get(folderId)
+    const doc = practice?.docs.get(docId)
+    if (!practice || !doc?.result) return null
+
+    const term = originalText.trim()
+    if (term.length === 0) return null
+
+    // Il testo originale del documento è sul disco (già noto da scan); serve per
+    // contare le occorrenze e ri-applicare gli pseudonimi sul sorgente.
+    let sourceText: string
+    try {
+      sourceText = readFileSync(doc.filePath, 'utf8')
+    } catch {
+      return null
+    }
+
+    const re = buildEntityRegex(term)
+    const matches = sourceText.match(re)
+    if (!matches || matches.length === 0) return null // non presente: nessun effetto
+
+    // Evita duplicati: se un'entità con stesso testo (case-insensitive) esiste già,
+    // non la ri-aggiunge.
+    const exists = doc.result.entities.some(
+      (e) => e.originalText.toLowerCase() === term.toLowerCase()
+    )
+    if (exists) return null
+
+    const pseudonym = practice.session.getOrCreatePseudonym(term, type)
+    const entity: DetectedEntity = {
+      type,
+      originalText: term,
+      pseudonym,
+      occurrences: matches.length,
+      source: 'manual'
+    }
+    doc.result.entities.push(entity)
+    // Ri-anonimizza l'intero documento con la lista aggiornata (longest-match).
+    doc.result.text = applyPseudonyms(sourceText, doc.result.entities)
+    return entity
   }
 
   /** Esporta il dizionario di pratica (testo in chiaro) accanto ai documenti. */

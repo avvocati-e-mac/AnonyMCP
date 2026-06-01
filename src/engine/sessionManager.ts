@@ -173,6 +173,21 @@ export class SessionManager {
     return this.dictionary.has(originalText.trim().toLowerCase())
   }
 
+  /**
+   * Tutti i termini noti alla sessione (testo, pseudonimo, tipo). Serve a CERCARLI
+   * nel testo di ogni documento: una parte nota alla pratica non deve mai trapelare
+   * anche se il NER non la rileva in quel documento (vedi enrichFromKnownTerms).
+   * Il testo è normalizzato a minuscolo (la chiave del dizionario); il match è
+   * comunque case-insensitive.
+   */
+  getKnownTerms(): { original: string; pseudonym: string; type: EntityType }[] {
+    return [...this.dictionary.entries()].map(([original, v]) => ({
+      original,
+      pseudonym: v.pseudonym,
+      type: v.type
+    }))
+  }
+
   /** Statistiche del dizionario (senza esporre i valori reali). */
   getStats(): { totalEntries: number; byType: Record<string, number> } {
     const byType: Record<string, number> = {}

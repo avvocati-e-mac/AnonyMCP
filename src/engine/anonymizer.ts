@@ -208,7 +208,66 @@ export async function detectEntities(
     return { type: e.type, originalText: e.text, pseudonym, occurrences, source: e.source }
   })
 
-  return { entities, session }
+  // Arricchisce con i termini NOTI alla pratica (dizionario) che compaiono nel
+  // testo ma che il NER/regex non ha ri-rilevato qui: una parte nota non deve mai
+  // trapelare in chiaro (vincolo primario anti-leak). Vedi enrichFromKnownTerms.
+  return { entities: enrichFromKnownTerms(text, entities, session), session }
+}
+
+/**
+ * Tipi di entità per cui il match del termine noto deve rispettare i confini di
+ * parola (sono testo "linguistico": evita di sostituire "Anna" dentro "Annabella").
+ * Gli altri tipi (CF/IBAN/EMAIL/…) sono valori già specifici: match diretto.
+ */
+const WORD_BOUNDARY_TYPES = new Set<EntityType>([
+  'PERSONA',
+  'ORGANIZZAZIONE',
+  'LUOGO',
+  'INDIRIZZO',
+  'LUOGO_NASCITA'
+])
+
+/**
+ * Regex per cercare un termine NOTO nel testo. Come `buildEntityRegex` (spazi→`\s+`,
+ * robusto agli a-capo), ma con confini di parola opzionali per i tipi linguistici,
+ * usando lookaround Unicode (\p{L}/\p{N}) così "Rossi" non matcha dentro "Rossini".
+ */
+export function buildKnownTermRegex(term: string, wordBoundary: boolean): RegExp {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const flexible = escaped.replace(/\s+/g, '\\s+')
+  if (!wordBoundary) return new RegExp(flexible, 'giu')
+  return new RegExp(`(?<![\\p{L}\\p{N}])${flexible}(?![\\p{L}\\p{N}])`, 'giu')
+}
+
+/**
+ * Aggiunge alla lista entità i termini noti alla sessione (dizionario di pratica)
+ * che compaiono nel testo ma non sono già fra le entità rilevate. Marca queste
+ * entità con `source: 'dictionary'` (la review le mostra come "(dict)"). Garantisce
+ * che una parte nota alla pratica venga pseudonimizzata in OGNI documento.
+ */
+export function enrichFromKnownTerms(
+  text: string,
+  detected: DetectedEntity[],
+  session: SessionManager
+): DetectedEntity[] {
+  const already = new Set(detected.map((e) => normalize(e.originalText)))
+  const result = [...detected]
+  for (const known of session.getKnownTerms()) {
+    if (already.has(normalize(known.original))) continue
+    const wb = WORD_BOUNDARY_TYPES.has(known.type)
+    const re = buildKnownTermRegex(known.original, wb)
+    const matches = text.match(re)
+    if (!matches || matches.length === 0) continue
+    result.push({
+      type: known.type,
+      originalText: known.original,
+      pseudonym: known.pseudonym,
+      occurrences: matches.length,
+      source: 'dictionary'
+    })
+    already.add(normalize(known.original))
+  }
+  return result
 }
 
 /** Conta le occorrenze (case-insensitive) di un valore nel testo. */
