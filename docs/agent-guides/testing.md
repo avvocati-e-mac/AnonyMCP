@@ -1,0 +1,45 @@
+# Testing
+
+Requisito di progetto: **≥1 test per funzione**. I 68→94 test attuali coprono engine,
+pipeline, crypto, pathGuard, server e2e, anti-leak, red-team.
+
+## Contents
+- Comandi
+- Tipi di test
+- Il test più importante: anti-leak
+- Red-team / fuzzing
+- Aggiungere un test
+
+## Comandi
+```bash
+npm test            # tutta la suite (vitest run)
+npm run test:watch  # watch
+npx vitest run test/<file>.test.ts   # un singolo file
+```
+
+## Tipi di test
+- **Unit**: ogni funzione esportata (regex, sessionManager, anonymizer, crypto, pathGuard,
+  riskScorer, practiceStore).
+- **E2E MCP** (`test/server.e2e.test.ts`): client ↔ server via `InMemoryTransport`; verifica
+  i 4 tool, l'assenza dei tool de-anon, e che `resources/read` ritorni solo pseudonimi.
+- **Anti-leak** (`test/fixtures.antileak.test.ts`): vedi sotto.
+- **Red-team** (`test/redteam.*.test.ts`): docId, sanitizer (fuzzing), search guard.
+- **Coerenza cache** (`test/cacheCoherence.test.ts`): pseudonimi stabili tra sessioni.
+
+## Il test più importante: anti-leak
+Per ogni fixture sintetico, asserire che le entità reali (`manifest.mustNotLeak`) **non**
+compaiano nell'output pseudonimizzato. È la garanzia centrale del prodotto.
+
+I fixture (`test/fixtures/synthetic/`, generati da `scripts/generateFixtures.ts`) usano
+**dati finti**, mai reali, e coprono le 4 materie (civile/penale/tributario/amministrativo).
+
+## Red-team / fuzzing
+Il NER reale non è in Fase 1: nei test si inietta uno **stub `NerFn`** per simulare il layer
+BERT/Italian-Legal-BERT. Il fuzzing del sanitizer prova offuscatori (zero-width, entità HTML,
+fullwidth, sillabazione, split-bold, span HTML) e verifica che un CF venga sempre smascherato.
+
+## Aggiungere un test
+1. Caso positivo + caso negativo + (per la sicurezza) abuse-case.
+2. Per fixture nuovi: aggiungere a `generateFixtures.ts` con `mustNotLeak` e `sensitive`,
+   rigenerare (`npm run gen:fixtures`), il test anti-leak li raccoglie automaticamente.
+3. Per i regex globali, ricordare di clonarli nel test (vedi code-conventions).

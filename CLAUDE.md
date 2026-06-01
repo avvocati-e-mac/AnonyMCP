@@ -1,97 +1,71 @@
-# CLAUDE.md — Guida di sviluppo per AnonyMCP
-
-Istruzioni per chiunque (umano o LLM) sviluppi questo progetto. Leggi anche
-`ARCHITETTURA.md` e il piano in `~/.claude/plans/`.
-
-## Cos'è
+# CLAUDE.md — AnonyMCP
 
 Server MCP locale che **pseudonimizza** documenti legali italiani prima di esporli a un LLM.
-Fase 1: server stdio standalone. Fase 2: app Electron. Open-source (AGPL-3.0).
+Fase 1: server stdio standalone (gestisce `.txt`/`.md`). Fase 2: app Electron. Open-source
+(AGPL-3.0). Riusa il motore di `avvocati-e-mac/anonimator`.
+
+> ⚠️ **Pseudonimizzazione, non anonimizzazione**: l'output resta dato personale (Garante/EDPB).
+
+## Invarianti di sicurezza — NON negoziabili
+La sicurezza viene prima dell'ergonomia. Ogni modifica va verificata contro queste regole
+(versione estesa + dove sono nel codice: [security-invariants](docs/agent-guides/security-invariants.md)).
+
+1. **Mai loggare su stdout** (è il canale JSON-RPC) → usa `src/util/logger.ts` (stderr).
+2. **Mai PII in chiaro su disco**: mappa reale↔pseudonimo solo in RAM (`SessionManager`); la
+   cache `.anonymcp` contiene solo hash, cifrata AES-256-GCM.
+3. **Niente tool MCP di de-anonimizzazione/get_mapping**. La reversibilità è un proxy locale,
+   fuori dal protocollo.
+4. **Anonimizza PRIMA di chunking/indice/embedding** (gli embedding sono invertibili).
+5. **Sanitizza il Markdown prima di anonimizzare** (zero-width/entità HTML/NFKC/sillabazione):
+   `src/pipeline/toMarkdown.ts`.
+6. **Dati art. 9/10 (penale/salute/minori) mai a LLM cloud** → classifica con `riskScorer`.
+7. **Valida ogni path** (`src/util/pathGuard.ts`): allowlist, no traversal, docId/URI opachi (HMAC).
+8. **Quarantena di default** (`requireManualApproval`): niente esposizione senza approvazione umana.
+9. **Errori azionabili**, mai stack trace ai client (`isError` + prossimo passo).
 
 ## Comandi
-
 ```bash
 npm install
-npm run build          # compila in dist/
-npm test               # vitest (tutta la suite)
-npm run test:watch
-npm run typecheck      # tsc --noEmit
-npm run gen:fixtures   # rigenera i documenti sintetici di test
-npm run inspector      # MCP Inspector sul server compilato
-npm start              # avvia il server (richiede anonymcp.config.json)
+npm run build        # tsc → dist/
+npm test             # vitest (tutta la suite)
+npm run typecheck    # tsc --noEmit
+npm run gen:fixtures # rigenera i documenti sintetici di test
+npm run inspector    # MCP Inspector sul server compilato
+npm start            # avvia (richiede anonymcp.config.json)
 ```
 
-## Regole di sicurezza NON negoziabili
+## Sviluppo con assistenti CLI + commit atomici
+- **Plan mode** prima di scrivere; task atomici (5–10 min); review del diff prima del commit.
+- **Commit atomico = una decisione**, reversibile con `git revert`. Test + doc nello **stesso
+  commit** del codice. Messaggio che spiega il *perché* + `Co-Authored-By: Claude Opus 4.8
+  <noreply@anthropic.com>`.
+- Per decisioni di sicurezza/architettura usa la **formula consiglio LLM** e il **council
+  multi-modello** → [development-process](docs/agent-guides/development-process.md).
+- Prima di committare: `npm run typecheck` e `npm test` verdi; nessun dato reale nei
+  fixture/commit (`.gitignore`: `*.anonymcp`, `anonymcp.config.json`, indici).
 
-Questo è uno strumento di privacy: la sicurezza viene prima dell'ergonomia.
-
-1. **Mai loggare su stdout.** stdout è il canale JSON-RPC. Usa `util/logger.ts` (stderr).
-2. **Mai persistere PII in chiaro.** La mappa reale↔pseudonimo vive **solo in RAM**
-   (`SessionManager`). La cache su disco contiene solo hash (`practiceStore`), cifrata.
-3. **Niente tool di de-anonimizzazione/get_mapping** esposti via MCP. La reversibilità è
-   solo nel proxy locale, fuori dal protocollo.
-4. **Anonimizza PRIMA di chunking/indice/embedding.** Gli embedding sono invertibili.
-5. **Sanitizza il Markdown prima di anonimizzare** (de-frammenta `M**ari**o`, togli
-   HTML/link/frontmatter).
-6. **Dati art. 9/10 (penale/salute/minori) → mai a LLM cloud.** Classifica con `riskScorer`.
-7. **Valida ogni path** con `util/pathGuard.ts`; esponi solo le cartelle in allowlist; i
-   documenti vanno in **quarantena** finché non approvati.
-8. **Errori azionabili, mai stack trace ai client.** Nei tool usa `isError` + messaggio con
-   il prossimo passo.
-
-## Standard MCP (2025-11-25)
-
-- Documenti = **Resources** (dati passivi), non tool di lettura.
-- Tool = solo **azioni**, snake_case con prefisso `anonymcp_`, con `inputSchema` Zod e
-  `annotations` (`readOnlyHint`/`idempotentHint`/`openWorldHint`).
-- Capability `resources.listChanged`; chiama `sendResourceListChanged()` quando l'elenco cambia.
-- Aggiungi `structuredContent` oltre al `content` testuale.
-
-## Convenzioni di codice
-
-- TypeScript ESM, `Node16` module resolution → **gli import relativi finiscono in `.js`**
-  (es. `import { log } from './util/logger.js'`).
-- `strict` + `noUncheckedIndexedAccess`. Niente `any` non giustificato.
-- Riusa il motore di Anonimator: prima di aggiungere un pattern/entità, controlla
-  `engine/regexPatterns.ts` e `engine/legalStopWords.ts`.
-- I pattern regex sono globali e condivisi: **clona** (`new RegExp(p.source, p.flags)`) prima
-  di usarli con `exec`/`test` per evitare bug di `lastIndex`.
-
-## Testing (requisito: ≥1 test per funzione)
-
-- Ogni funzione esportata ha almeno un test in `test/`.
-- **Test anti-leak**: per ogni fixture, asserisci che le entità reali (`manifest.mustNotLeak`)
-  NON compaiano nell'output. È il test più importante.
-- I fixture sintetici usano **dati finti** (mai reali) e coprono le 4 materie.
-- L'e2e (`server.e2e.test.ts`) parla col server via `InMemoryTransport` + `Client` MCP.
-- Il NER reale non è in Fase 1: nei test si inietta uno **stub `NerFn`** per simulare il
-  layer BERT/Italian-Legal-BERT.
-
-## Metodo (antirez)
-
-Human-in-the-loop, niente vibe coding cieco: comprendi ogni riga, mantieni il codice minimale,
-fornisci contesto ampio all'LLM. Per decisioni di design importanti, usa più modelli in
-back-and-forth (qui: consigli GPT/Gemini/Kimi documentati nel piano).
+## Mappa della documentazione (progressive disclosure)
+Apri solo ciò che serve al task:
+- **Architettura, diagrammi, processo** → [ARCHITETTURA.md](ARCHITETTURA.md)
+- **Invarianti di sicurezza (estese)** → [security-invariants](docs/agent-guides/security-invariants.md)
+- **Threat model (STRIDE)** → [threat-model](docs/agent-guides/threat-model.md)
+- **Convenzioni MCP** → [mcp-conventions](docs/agent-guides/mcp-conventions.md)
+- **Convenzioni di codice** (ESM `.js`, regex globali, hash) → [code-conventions](docs/agent-guides/code-conventions.md)
+- **Testing** (≥1 test/funzione, anti-leak, fuzzing) → [testing](docs/agent-guides/testing.md)
+- **Processo di sviluppo + formula LLM** → [development-process](docs/agent-guides/development-process.md)
 
 ## Struttura
-
 ```
 src/
-  index.ts            entrypoint stdio
-  server.ts           McpServer: tool + resources
-  config.ts           load/validate config (Zod)
-  types.ts            tipi condivisi
-  engine/             motore pseudonimizzazione (da Anonimator)
-  pipeline/           toMarkdown, metadataStripper, riskScorer, documentService
-  practice/           practiceStore (cache cifrata), practiceRegistry (stato)
-  util/               logger (stderr), crypto (AES-GCM), pathGuard
-test/                 vitest (unit + anti-leak + e2e)
-scripts/              generateFixtures
+  index.ts      entrypoint stdio        server.ts   McpServer: tool + resources
+  config.ts     load/validate (Zod)     types.ts    tipi condivisi
+  engine/       pseudonimizzazione (regex, sessionManager, anonymizer, legalStopWords)
+  pipeline/     toMarkdown, metadataStripper, riskScorer, documentService
+  practice/     practiceStore (cache cifrata), practiceRegistry (stato/quarantena)
+  util/         logger (stderr), crypto (AES-GCM/HMAC), pathGuard
+test/           vitest (unit + anti-leak + e2e + redteam)
+docs/agent-guides/  guide di dettaglio (Tier-3)
 ```
 
-## Prima di committare
-
-- `npm run typecheck` e `npm test` verdi.
-- Nessun dato reale nei fixture o nei commit (vedi `.gitignore`: `*.anonymcp`,
-  `anonymcp.config.json`, indici).
-- Messaggi di commit con `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+> Stato: Fase 1 implementata (94 test verdi). **Non** ancora deployabile in produzione legale:
+> vedi checklist Go/No-Go nel piano e i gap in [threat-model](docs/agent-guides/threat-model.md).
