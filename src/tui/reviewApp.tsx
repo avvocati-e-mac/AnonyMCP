@@ -60,37 +60,61 @@ function EntityRow({
   )
 }
 
-/** Anteprima del testo con entità evidenziate a colori. */
+/**
+ * Anteprima del testo con entità evidenziate a colori, con scroll per riga.
+ * Mostra `maxLines` righe a partire da `scrollOffset`. Per evidenziare le entità
+ * anche quando una riga è una sottostringa, si segmenta riga per riga.
+ */
 function Preview({
   text,
   entities,
-  mode
+  mode,
+  scrollOffset,
+  maxLines
 }: {
   text: string
   entities: DetectedEntity[]
   mode: HighlightMode
+  scrollOffset: number
+  maxLines: number
 }): React.ReactElement {
-  const segments = highlightEntities(text, entities, mode)
+  const lines = text.split('\n')
+  const visible = lines.slice(scrollOffset, scrollOffset + maxLines)
   return (
-    <Text>
-      {segments.map((seg, i) =>
-        seg.type ? (
-          <Text key={i} color={colorForType(seg.type)} bold>
-            {seg.text}
+    <Box flexDirection="column">
+      {visible.map((line, li) => {
+        const segments = highlightEntities(line, entities, mode)
+        return (
+          <Text key={li} wrap="truncate-end">
+            {segments.map((seg, i) =>
+              seg.type ? (
+                <Text key={i} color={colorForType(seg.type)} bold>
+                  {seg.text}
+                </Text>
+              ) : (
+                <Text key={i}>{seg.text}</Text>
+              )
+            )}
           </Text>
-        ) : (
-          <Text key={i}>{seg.text}</Text>
         )
-      )}
-    </Text>
+      })}
+    </Box>
   )
 }
+
+/** Numero di righe dell'anteprima visibili insieme (finestra di scroll). */
+const PREVIEW_LINES = 20
 
 export function ReviewApp(props: ReviewAppProps): React.ReactElement {
   const { exit } = useApp()
   const [cursor, setCursor] = useState(0)
   const [included, setIncluded] = useState<boolean[]>(() => props.entities.map(() => true))
   const [mode, setMode] = useState<HighlightMode>('original')
+  const [scroll, setScroll] = useState(0)
+
+  const previewText = mode === 'original' ? props.originalText : props.anonymizedText
+  const totalLines = previewText.split('\n').length
+  const maxScroll = Math.max(0, totalLines - PREVIEW_LINES)
 
   useInput((input, key) => {
     if (key.upArrow) setCursor((c) => Math.max(0, c - 1))
@@ -99,6 +123,10 @@ export function ReviewApp(props: ReviewAppProps): React.ReactElement {
       setIncluded((prev) => prev.map((v, i) => (i === cursor ? !v : v)))
     } else if (key.tab) {
       setMode((m) => (m === 'original' ? 'pseudonym' : 'original'))
+    } else if (key.pageDown || input === 'j') {
+      setScroll((s) => Math.min(maxScroll, s + PREVIEW_LINES))
+    } else if (key.pageUp || input === 'k') {
+      setScroll((s) => Math.max(0, s - PREVIEW_LINES))
     } else if (key.return) {
       const confirmed = props.entities.filter((_, i) => included[i])
       props.onApprove(confirmed)
@@ -109,8 +137,9 @@ export function ReviewApp(props: ReviewAppProps): React.ReactElement {
     }
   })
 
-  const previewText = mode === 'original' ? props.originalText : props.anonymizedText
   const includedCount = included.filter(Boolean).length
+  const scrollInfo =
+    maxScroll > 0 ? ` · righe ${scroll + 1}-${Math.min(scroll + PREVIEW_LINES, totalLines)}/${totalLines}` : ''
 
   return (
     <Box flexDirection="column">
@@ -126,18 +155,24 @@ export function ReviewApp(props: ReviewAppProps): React.ReactElement {
             <EntityRow key={i} entity={e} selected={i === cursor} included={included[i]!} />
           ))}
         </Box>
-        {/* Colonna destra: anteprima */}
+        {/* Colonna destra: anteprima con scroll */}
         <Box flexDirection="column" width="50%">
           <Text bold>
-            ANTEPRIMA [{mode === 'original' ? 'Originale' : 'Anonimizzato'}]
+            ANTEPRIMA [{mode === 'original' ? 'Originale' : 'Anonimizzato'}]{scrollInfo}
           </Text>
-          <Preview text={previewText} entities={props.entities} mode={mode} />
+          <Preview
+            text={previewText}
+            entities={props.entities}
+            mode={mode}
+            scrollOffset={scroll}
+            maxLines={PREVIEW_LINES}
+          />
         </Box>
       </Box>
       <Box marginTop={1}>
         <Text dimColor>
-          ↑↓ naviga · SPAZIO includi/escludi · TAB Originale↔Anonimizzato · INVIO approva ·
-          q annulla
+          ↑↓ naviga · SPAZIO includi/escludi · TAB Orig↔Anon · PagSu/PagGiù (o k/j) scorri ·
+          INVIO approva · q annulla
         </Text>
       </Box>
     </Box>

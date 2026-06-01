@@ -69,9 +69,23 @@ describe('ReviewApp (TUI)', () => {
     expect(onApprove).not.toHaveBeenCalled()
   })
 
-  it('TAB passa all anteprima Anonimizzato', () => {
+  it('TAB passa all anteprima Anonimizzato', async () => {
     const { stdin, lastFrame } = setup()
+    expect(lastFrame()).toContain('ANTEPRIMA [Originale]')
     stdin.write('\t')
-    expect(lastFrame()).toContain('Anonimizzato')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(lastFrame()).toContain('ANTEPRIMA [Anonimizzato]')
+  })
+
+  it('mostra l indicatore di scroll per testi lunghi e scorre con j', async () => {
+    const longText = Array.from({ length: 60 }, (_, i) => `riga ${i}`).join('\n')
+    const { stdin, lastFrame } = setup({ originalText: longText, anonymizedText: longText })
+    // Documento di 60 righe → indicatore "righe 1-20/60".
+    expect(lastFrame()).toContain('/60')
+    expect(lastFrame()).toContain('riga 0')
+    expect(lastFrame()).not.toContain('riga 30')
+    stdin.write('j') // scroll giù di una pagina
+    await new Promise((r) => setTimeout(r, 20))
+    expect(lastFrame()).toContain('riga 20')
   })
 })

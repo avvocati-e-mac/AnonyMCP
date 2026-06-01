@@ -226,8 +226,19 @@ export function applyPseudonyms(text: string, entities: DetectedEntity[]): strin
   let result = text
   const ordered = [...entities].sort((a, b) => b.originalText.length - a.originalText.length)
   for (const e of ordered) {
-    const re = new RegExp(e.originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
-    result = result.replace(re, e.pseudonym)
+    result = result.replace(buildEntityRegex(e.originalText), e.pseudonym)
   }
   return result
+}
+
+/**
+ * Costruisce un regex per trovare un'entità nel testo, robusto agli a-capo: gli
+ * spazi nell'originale matchano qualsiasi sequenza di whitespace (spazi, tab,
+ * newline). Necessario perché nei documenti legali un nome può essere spezzato
+ * su due righe ("Elena\nRossi") per il word-wrap, ma resta la stessa entità.
+ */
+export function buildEntityRegex(originalText: string): RegExp {
+  const escaped = originalText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const flexible = escaped.replace(/\s+/g, '\\s+')
+  return new RegExp(flexible, 'gi')
 }
