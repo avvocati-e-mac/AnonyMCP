@@ -156,14 +156,16 @@ approvare, rifiutare o aggiungere entità manualmente.
 
 > ⚠️ Esiste un flag `--auto-approve` (ed `ANONYMCP_AUTO_APPROVE=1`) che espone i documenti
 > **senza** revisione umana: utile solo per demo/test, **sconsigliato** con dati reali e
-> vietato con dati sensibili.
+> non adatto ai dati sensibili. Con `allowCloudForSensitive: false`, comunque, i documenti
+> sensibili non diventano Resources/search verso il canale MCP cloud.
 
 ## Sicurezza by design
 
 - I documenti sono esposti come **MCP Resources** già pseudonimizzati.
 - La mappa reale↔pseudonimo vive **solo in RAM**; nessuno strumento MCP di de-anonimizzazione.
 - La cache di pratica a riposo contiene **solo hash**, cifrata **AES-256-GCM**.
-- I **dati sensibili (art. 9/10 GDPR)** non vengono mai serviti a un LLM cloud.
+- I **dati sensibili (art. 9/10 GDPR)** non vengono serviti a un LLM cloud: con
+  `allowCloudForSensitive: false` sono bloccati come Resource, read diretto e search.
 - **Quarantena + approvazione umana** prima di ogni esposizione (`requireManualApproval`).
 - I log vanno **su stderr** (stdout è il canale JSON-RPC), i percorsi sono validati
   (allowlist, no traversal), docId e URI sono opachi (HMAC).
@@ -178,8 +180,9 @@ e [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
   (vedi la checklist Go/No-Go e [`threat-model`](docs/agent-guides/threat-model.md)).
 - **Fase 2** (in corso) — già implementato **M-Write** (scrittura LLM→cartella con
   re-idratazione, vedi sopra). Prossime tappe: app desktop **Electron** (evoluzione di
-  Anonimator) con UI di consenso/approvazione, log live, parser PDF/DOCX/OCR e NER legale,
-  pensata per avvocati non tecnici e distribuita per macOS (Intel/ARM), Windows e Linux.
+  Anonimator) con UI di consenso/approvazione, log live, parser PDF/DOCX/OCR e NER locale
+  `italian-ner-xxl-v2` (ADR-0007), pensata per avvocati non tecnici e distribuita per macOS
+  (Intel/ARM), Windows e Linux.
   Dettaglio in [`docs/ROADMAP-fase2.md`](docs/ROADMAP-fase2.md).
 
 Le modifiche di ogni versione sono in [`CHANGELOG.md`](./CHANGELOG.md).

@@ -17,6 +17,17 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
   collassa correttamente e usa la forma canonica. L'omonimia di iniziali resta distinta; il
   cognome condiviso da più persone NON viene ri-idratato (fail-safe + segnalazione). Il
   `canonical` è persistito nel dizionario di pratica come campo opzionale retrocompatibile.
+- **ADR-0007**: target NER Fase 2 fissato a `italian-ner-xxl-v2`, non Italian-Legal-BERT.
+
+### Corretto — red-team 2026-06-02
+- `addManualEntity` ri-pseudonimizza dal testo canonico/sanitizzato, evitando di reintrodurre
+  frontmatter o metadati raw dopo una correzione manuale.
+- `allowCloudForSensitive=false` è ora applicato a Resource list, read diretto e search:
+  documenti sensibili approvati restano non esponibili al canale MCP cloud.
+- M-Write verifica l'hash dello staging prima della promozione, blocca pending duplicati salvo
+  `overwrite=true` e non sovrascrive file finali creati dopo lo staging.
+- La TUI applica davvero le entità confermate/escluse dall'utente prima di approvare.
+- La config avvisa anche se il `folderId`, non solo il `label`, sembra contenere nomi delle parti.
 
 ## [0.1.0] - 2026-06-02
 

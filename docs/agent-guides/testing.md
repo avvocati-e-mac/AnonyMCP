@@ -1,7 +1,7 @@
 # Testing
 
-Requisito di progetto: **≥1 test per funzione**. I 68→94 test attuali coprono engine,
-pipeline, crypto, pathGuard, server e2e, anti-leak, red-team.
+Requisito di progetto: **≥1 test per funzione**. La suite copre engine, pipeline, crypto,
+pathGuard, server e2e, anti-leak, red-team e M-Write.
 
 ## Contents
 - Comandi
@@ -26,6 +26,7 @@ npx vitest run test/<file>.test.ts   # un singolo file
 - **Anti-leak** (`test/fixtures.antileak.test.ts`): vedi sotto.
 - **Red-team** (`test/redteam.*.test.ts`): docId, sanitizer (fuzzing), search guard, e M-Write
   (`redteam.write.test.ts`: traversal bloccato, return senza PII, staging, re-idratazione).
+  `redteam.search.test.ts` copre anche il gate `allowCloudForSensitive=false`.
 - **Coerenza cache** (`test/cacheCoherence.test.ts`): pseudonimi stabili tra sessioni.
 
 ## Il test più importante: anti-leak
@@ -36,9 +37,10 @@ I fixture (`test/fixtures/synthetic/`, generati da `scripts/generateFixtures.ts`
 **dati finti**, mai reali, e coprono le 4 materie (civile/penale/tributario/amministrativo).
 
 ## Red-team / fuzzing
-Il NER reale non è in Fase 1: nei test si inietta uno **stub `NerFn`** per simulare il layer
-BERT/Italian-Legal-BERT. Il fuzzing del sanitizer prova offuscatori (zero-width, entità HTML,
-fullwidth, sillabazione, split-bold, span HTML) e verifica che un CF venga sempre smascherato.
+Il NER reale non è in Fase 1: nei test si inietta uno **stub `NerFn`** per simulare il contratto
+del futuro layer `italian-ner-xxl-v2` (ADR-0007). Il fuzzing del sanitizer prova offuscatori
+(zero-width, entità HTML, fullwidth, sillabazione, split-bold, span HTML) e verifica che un CF
+venga sempre smascherato.
 
 ## Aggiungere un test
 1. Caso positivo + caso negativo + (per la sicurezza) abuse-case.

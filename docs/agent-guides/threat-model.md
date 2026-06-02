@@ -45,17 +45,17 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 | **Tool de-anon** | Elevation/Disclosure | LLM chiama get_mapping via prompt-injection | tool **inesistenti**; mappa solo in RAM | de-anon proxy = Fase 2 |
 | **Cache `.anonymcp`** | Tampering/Disclosure | lettura/modifica del file | AES-256-GCM (auth), solo hash, no PII (`practiceStore`) | chiave in env (Fase 1) → keychain OS in Fase 2 |
 | **SessionManager** | Disclosure | memory/crash dump | solo RAM, `reset()` zeroization | dump del processo (mitigare in Fase 2) |
-| **Pipeline NER** | Disclosure (leak) | offuscamento per evadere il NER | `sanitizeMarkdown` (zero-width/entity/NFKC/hyphenation) + quarantena | NER generico: recall imperfetto → Italian-Legal-BERT Fase 2 |
+| **Pipeline NER** | Disclosure (leak) | offuscamento per evadere il NER | `sanitizeMarkdown` (zero-width/entity/NFKC/hyphenation) + quarantena | NER regex-only: recall imperfetto → `italian-ner-xxl-v2` in worker locale (ADR-0007) |
 | **search** | Disclosure (inference) | query = dato reale per confermarne la presenza | guard anti-PII + ricerca su testo già pseudonimizzato | co-occorrenza statistica (rischio basso, locale) |
 | **pathGuard** | Tampering | directory traversal / URI fuori allowlist | `assertAllowed` + blocco artefatti interni | — |
 | **stdio** | Tampering (protocollo) | log su stdout rompe JSON-RPC | logger **solo stderr** | — |
 | **Documento** | Spoofing/Elevation | prompt-injection nel contenuto | contenuto trattato come dato non-fidato; nessuna esecuzione server-side | difesa a livello host/LLM |
-| **Endpoint LLM** | Disclosure | dato sensibile inviato al cloud | classificazione art.9/10 → solo LLM locale | enforcement completo in Fase 2 (app) |
+| **Endpoint LLM** | Disclosure | dato sensibile inviato al cloud | `allowCloudForSensitive=false` blocca Resource/read/search dei documenti sensibili | routing esplicito LLM locale/cloud nella app Fase 2 |
 
 ## Gap residui noti (→ Fase 2)
 - Chiave cache da **keychain OS** (ora da `ANONYMCP_CACHE_KEY`); rotazione chiave prima del
   limite nonce GCM (~2^32 messaggi/chiave; con IV random e volumi legali è teorico).
-- NER specializzato legale (**Italian-Legal-BERT**) + benchmark recall/precision su corpus reale.
+- NER locale `italian-ner-xxl-v2` (ADR-0007) + benchmark recall/precision su corpus reale.
 - Audit trail immutabile + RBAC; generalizzazione contestuale (RG/udienza/importi).
 - Parser binari (PDF/DOCX/OCR) in **sandbox/worker** isolato.
 

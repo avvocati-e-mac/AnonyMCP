@@ -18,10 +18,12 @@ remoto/HTTP non è previsto in Fase 1.
 I documenti pseudonimizzati sono **Resources**, non tool di lettura (i dati passivi vanno
 esposti come Resources).
 - URI: `anonymcp://practice/{folderId}/{docId}` — `docId` è opaco (HMAC, no nome file).
-- `ResourceTemplate` con callback `list` → solo documenti **approvati** (`exposableDocs`).
+- `ResourceTemplate` con callback `list` → solo documenti **esponibili** (`exposableDocs`):
+  approvati e non bloccati dalla policy `allowCloudForSensitive=false`.
 - Capability `resources.listChanged`; chiamare `server.sendResourceListChanged()` quando
   l'elenco cambia (in `PracticeRegistry.onResourcesChanged`).
-- `resources/read` ritorna **solo testo pseudonimizzato** (`mimeType: text/markdown`).
+- `resources/read` ritorna **solo testo pseudonimizzato** (`mimeType: text/markdown`) e ripete
+  lo stesso gate di `exposableDocs` anche su URI diretto.
 
 ## Tools (azioni)
 snake_case con prefisso `anonymcp_`. Sono **solo azioni**, non lettura di dati passivi.

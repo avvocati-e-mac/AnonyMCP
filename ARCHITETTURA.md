@@ -31,7 +31,7 @@ LLM. È l'utente a scegliere le cartelle. Nulla di sensibile lascia la macchina 
 - **Fase 1 (questo repo)** — server MCP stdio standalone, cartelle in `anonymcp.config.json`,
   documenti testuali (`.txt`/`.md`).
 - **Fase 2** — app Electron (evoluzione di Anonimator): UI consenso cartelle, log live,
-  parser binari (PDF/DOCX/OCR), NER Italian-Legal-BERT in worker, generatori DPIA/registro.
+  parser binari (PDF/DOCX/OCR), NER `italian-ner-xxl-v2` in worker, generatori DPIA/registro.
   Perché Electron e non Tauri: il motore è già Node/TS con native pesanti (riuso 1:1; Tauri
   imporrebbe un sidecar Node). Dettaglio nel piano di progetto.
 
@@ -86,7 +86,8 @@ flowchart LR
    (`M**ari**o`, `M<span>ari</span>o`, `M&#97;rio`, …). Avviene **prima** della pseudonimizzazione.
 3. **Rileva entità** (`engine/anonymizer.ts:detectEntities`): regex (`regexPatterns.ts`) +
    co-reference (il cognome eredita lo pseudonimo del nome completo) + veto filter
-   (`legalStopWords.ts`) + **NER iniettabile** (`NerFn`; Fase 2 = Italian-Legal-BERT).
+   (`legalStopWords.ts`) + **NER iniettabile** (`NerFn`; Fase 2 = `italian-ner-xxl-v2`,
+   vedi [ADR-0007](docs/adr/0007-ner-model-target.md)).
 4. **Overlap** (`resolveOverlaps`): longest-match / priorità tipo (CF batte PARTITA_IVA su uno
    stesso numero).
 5. **Pseudonimi** (`engine/sessionManager.ts`): coerenti (stesso testo → stesso pseudonimo),
@@ -163,7 +164,9 @@ Sintesi; dettaglio in [security-invariants](docs/agent-guides/security-invariant
 - Cache `.anonymcp` **cifrata** (AES-256-GCM), solo hash, esclusa dalle Resources; invalidata
   se `sourceHash`/`engineVersion` cambiano.
 - **docId opaco** (HMAC con chiave di sessione), nessun nome file negli URI.
-- **Dati art. 9/10 mai a LLM cloud** (solo LLM locale).
+- **Dati art. 9/10 mai a LLM cloud**: con `allowCloudForSensitive=false` un documento sensibile
+  può risultare approvato dall'umano, ma non è Resource, non è leggibile per URI diretto e non
+  entra nell'indice di ricerca.
 - `pathGuard` (allowlist + no traversal), logging solo su stderr, quarantena di default.
 - **Scrittura (M-Write)**: la re-idratazione (pseudonimo→reale) è LOCALE, mai esposta via MCP;
   il return all'LLM è privo di PII; staging + conferma umana prima del salvataggio definitivo;
@@ -176,7 +179,8 @@ categorie protette (art. 52 D.Lgs. 196/2003), DPIA per dati penali/sanitari mass
 ## 8. Token-minimization — ricerca BM25 (implementata)
 Esponiamo **chunk rilevanti** pseudonimizzati, non documenti interi, indicizzati con **BM25**
 (SQLite FTS5; non vettori, over-engineering senza GPU). Vedi `src/search/chunkIndex.ts` e
-[ADR-0002](docs/adr/0002-search-bm25.md). Solo i documenti approvati sono indicizzati (hard gate).
+[ADR-0002](docs/adr/0002-search-bm25.md). Solo i documenti approvati e consentiti dalla policy
+cloud sono indicizzati (hard gate).
 Fase 1: tokenizer `unicode61` senza stemming. Fase 2 (da valutare): stemming italiano (Snowball)
 e ricerca ibrida BM25+embedding locale. La cifratura dell'indice è opzionale ([ADR-0001](docs/adr/0001-encryption-at-rest-optional.md)).
 
@@ -187,10 +191,13 @@ Metodo human-in-the-loop (antirez), commit atomici, decisioni validate da consig
   1. Architettura → rimossi tool de-anon, documenti come Resources, cache cifrata, quarantena.
   2. Pipeline/sicurezza → anonimizza prima dell'indice, **Docling bocciato** (CVE-2026-24009),
      Markdown sanitizzato, BM25 non vettori.
-  3. Alternative + legale → mupdf.js AGPL, **Italian-Legal-BERT**, dati sensibili mai al cloud,
+  3. Alternative + legale → mupdf.js AGPL, NER locale, dati sensibili mai al cloud,
      re-identificazione da contesto/metadati.
   4. Red team dello stato implementato → fix docId/HMAC, preload cache, sanitizer hardening,
      overlap, search guard, threat model.
+  5. Red team M-Write/review → fix entità manuali su testo canonico, enforcement
+     `allowCloudForSensitive`, hash staging, selezione TUI applicata, warning su `folderId`,
+     ADR-0007.
 - Ogni fix = **commit atomico** (revertibile) con test + doc. Dettaglio e formula in
   [development-process](docs/agent-guides/development-process.md).
 
@@ -207,6 +214,6 @@ un rischio reale e verificabile, respingi il resto motivando.
 
 ## 11. Limiti noti
 Verdetto dei consigli: **non deployabile in produzione legale senza remediation**. Mancano
-(Fase 2): NER legale validato, keychain OS per la chiave cache, generalizzazione contestuale,
+(Fase 2): NER locale validato (`italian-ner-xxl-v2` come target iniziale), keychain OS per la chiave cache, generalizzazione contestuale,
 audit trail immutabile + RBAC, parser binari sandboxati, DPIA/registro. Checklist Go/No-Go nel
 piano di progetto.

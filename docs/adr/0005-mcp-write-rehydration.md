@@ -49,6 +49,9 @@ binari (.docx) il client genera il file da sé e lo invia in **base64** (zip). V
    sottocartella di staging (`.anonymcp-staging/`, artefatto mai esposto come resource) e si
    registra un *pending write*; la TUI lo promuove alla destinazione finale su conferma umana.
    In auto-approve si scrive direttamente (coerente con lo scan).
+   Il pending contiene l'hash del contenuto in staging: se il file cambia prima della conferma,
+   la promozione viene rifiutata. Un secondo staging sullo stesso `relPath` è rifiutato salvo
+   `overwrite=true`.
 5. **Path guard (invariante #7)**: ogni `relPath` è risolto e validato dentro la cartella della
    pratica (`pathGuard.isInside`), niente traversal/assoluti/artefatti interni.
 6. **Return senza PII**: la risposta MCP contiene solo `{saved/staged, relPath,
@@ -76,5 +79,7 @@ binari (.docx) il client genera il file da sé e lo invia in **base64** (zip). V
 - Nuovi `src/practice/writeService.ts` e `writeApprovalStore.ts`; nuovi metodi nel
   `PracticeRegistry` (`stageWrite`/`listPendingWrites`/`promoteWrite`, LOCALI, non tool MCP).
 - La TUI estende le azioni per promuovere le scritture in staging.
+- La promozione verifica `contentHash` e non sovrascrive un file finale creato dopo lo staging
+  salvo che il pending sia nato con `overwrite=true`.
 - I tool MCP passano da 4 a 6: aggiornare doc e test e2e.
 - Nuova sottocartella artefatto `.anonymcp-staging/` (mai esposta come resource).

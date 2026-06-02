@@ -15,7 +15,7 @@ MCP (resta MCP, client LLM esterno), non lo sostituisce. NON si generano file *a
 
 | # | Milestone | Cosa | Stato |
 |---|---|---|---|
-| **M-Write** | **Scrittura LLM→cartella (testuali)** | Tool MCP per salvare bozze testuali re-idratate + creare sottocartelle nella pratica | **in corso** |
+| **M-Write** | **Scrittura LLM→cartella (testuali)** | Tool MCP per salvare bozze testuali re-idratate + creare sottocartelle nella pratica | implementata |
 | M-Write-Binary | Scrittura formati binari ricchi | `.docx/.pdf/.xlsx/.pptx` generati **dall'MCP** dal testo ri-idratato | pianificata (ADR a parte) |
 | M1 | Parser input PDF/DOCX/ODT | Estrarre testo da binari e alimentare `processFile` (riuso parser Anonimator) | pianificata |
 | M2 | OCR scansioni | PDF scansionati → testo via Tesseract | pianificata |
@@ -25,8 +25,9 @@ MCP (resta MCP, client LLM esterno), non lo sostituisce. NON si generano file *a
 | M6 | Hardening produzione | keychain OS, audit trail, sandbox parser, DPIA/registro | pianificata |
 | M7 | Packaging 4-OS | estendere `release.yml` a installer .dmg/.exe/.AppImage | pianificata |
 
-**Nota correttiva (per M3):** il NER reale di Anonimator è `italian-ner-xxl-v2` (NER italiano
-generico ONNX), **non** "Italian-Legal-BERT" come scritto altrove. Allineare la dicitura.
+**Decisione M3:** il target NER è `italian-ner-xxl-v2`, **non** "Italian-Legal-BERT". Il motivo
+è pratico: AnonyMCP deve ricevere entità da pseudonimizzare (`NerFn`), non solo un modello che
+comprenda meglio il linguaggio legale. Vedi [ADR-0007](adr/0007-ner-model-target.md).
 
 ## M-Write — scrittura LLM→cartella
 
@@ -58,5 +59,8 @@ ri-idratato → **M-Write-Binary** (milestone separata con proprio ADR).
 - Path validato con `pathGuard` (`isInside` nella pratica, no traversal/assoluti/artefatti).
 - Allowlist di estensioni testuali; niente eseguibili/config.
 - Quarantena: con `requireManualApproval`, scrittura in staging + approvazione umana via TUI.
+- Pending write protetto da `contentHash`: se il file in staging cambia dopo la registrazione,
+  la promozione viene rifiutata e la bozza va rigenerata.
+- Una seconda bozza sullo stesso `relPath` non sostituisce lo staging, salvo `overwrite=true`.
 - Il return MCP verso l'LLM non contiene **mai** PII reale (solo conteggi e pseudonimi).
 - Pseudonimi ambigui (collisione) **non** vengono sostituiti: segnalati, mai indovinati.
