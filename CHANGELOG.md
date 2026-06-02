@@ -7,6 +7,12 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto — Fase 2 / Electron app
+- Baseline Electron/Vite/React/Tailwind/Zustand con main/preload/renderer separati,
+  `contextIsolation`, `sandbox`, `nodeIntegration=false`, CSP restrittiva e IPC nominale
+  validato con Zod. La prima UI mostra onboarding privacy, setup pratiche se manca la config
+  e dashboard generale preliminare; non collega ancora review/import reale al motore.
+
 ### Aggiunto — Fase 2 / M-Write (scrittura LLM→cartella)
 - Strumenti MCP `anonymcp_write_document` e `anonymcp_create_folder`: l'LLM salva bozze
   testuali nella pratica senza toccare il disco. La bozza è **re-idratata** (pseudonimo→reale)
