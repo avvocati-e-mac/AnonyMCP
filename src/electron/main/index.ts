@@ -1,13 +1,24 @@
-import { app, BrowserWindow, ipcMain, session, type IpcMainInvokeEvent } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  session,
+  type IpcMainInvokeEvent,
+  type OpenDialogOptions
+} from 'electron'
 import { join } from 'node:path'
-import { loadConfig } from '../../config.js'
+import { loadConfig, saveConfig } from '../../config.js'
 import { LocalReviewService } from '../../app/reviewService.js'
+import { buildExposedFolders, discoverPracticeFolders } from '../../app/folderImport.js'
 import { log } from '../../util/logger.js'
 import {
   AppStatusSchema,
   BooleanResultSchema,
   CloudBlockedSensitiveDocumentListSchema,
   DashboardSummarySchema,
+  FolderImportRequestSchema,
+  FolderImportResultSchema,
   IPC_CHANNELS,
   ManualEntityRequestSchema,
   ReviewApplySelectionRequestSchema,
@@ -21,6 +32,7 @@ import {
   ScanPracticeResultSchema,
   type AppStatus
 } from '../shared/ipc.js'
+import type { AnonyMcpConfig } from '../../types.js'
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL
 let serviceCache: { configPath: string; service: LocalReviewService } | null = null
@@ -93,6 +105,29 @@ function localReviewService(): LocalReviewService {
   return service
 }
 
+function defaultConfig(): AnonyMcpConfig {
+  return {
+    version: 1,
+    folders: [],
+    requireManualApproval: true,
+    allowCloudForSensitive: false,
+    logLevel: 'info'
+  }
+}
+
+function loadConfigOrDefault(): AnonyMcpConfig {
+  try {
+    return loadConfig(configPath())
+  } catch {
+    return defaultConfig()
+  }
+}
+
+function clearServiceCache(): void {
+  serviceCache?.service.close()
+  serviceCache = null
+}
+
 function readAppStatus(): AppStatus {
   try {
     const config = loadConfig(configPath())
@@ -115,6 +150,34 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.APP_STATUS, (event) => {
     assertTrustedSender(event)
     return readAppStatus()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.FOLDERS_SELECT_IMPORT, async (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = FolderImportRequestSchema.parse(payload)
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const options: OpenDialogOptions = {
+      properties: ['openDirectory', 'multiSelections']
+    }
+    const selection = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options)
+
+    if (selection.canceled || selection.filePaths.length === 0) {
+      return FolderImportResultSchema.parse({ added: 0, skipped: 0, folders: [] })
+    }
+
+    const config = loadConfigOrDefault()
+    const candidates = discoverPracticeFolders(selection.filePaths, request.mode)
+    const folders = buildExposedFolders(candidates, { existingFolders: config.folders })
+    const nextConfig: AnonyMcpConfig = { ...config, folders: [...config.folders, ...folders] }
+    saveConfig(configPath(), nextConfig)
+    clearServiceCache()
+    return FolderImportResultSchema.parse({
+      added: folders.length,
+      skipped: candidates.length - folders.length,
+      folders
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_GET, (event) => {
@@ -241,8 +304,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  serviceCache?.service.close()
-  serviceCache = null
+  clearServiceCache()
 })
 
 app.on('web-contents-created', (_event, contents) => {

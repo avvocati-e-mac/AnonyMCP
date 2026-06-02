@@ -3,6 +3,8 @@ import {
   AppStatusSchema,
   CloudBlockedSensitiveDocumentListSchema,
   DashboardSummarySchema,
+  FolderImportRequestSchema,
+  FolderImportResultSchema,
   IPC_CHANNELS,
   ManualEntityRequestSchema,
   ReviewApplySelectionRequestSchema,
@@ -19,6 +21,8 @@ import {
   type AppStatus,
   type CloudBlockedSensitiveDocument,
   type DashboardSummary,
+  type FolderImportMode,
+  type FolderImportResult,
   type ReviewDocumentDetail,
   type ReviewDocumentListItem,
   type ReviewEntity,
@@ -29,6 +33,11 @@ const api: AnonymcpElectronApi = Object.freeze({
   async getAppStatus(): Promise<AppStatus> {
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.APP_STATUS)
     return AppStatusSchema.parse(result)
+  },
+  async selectAndImportFolders(mode: FolderImportMode): Promise<FolderImportResult> {
+    const request = FolderImportRequestSchema.parse({ mode })
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.FOLDERS_SELECT_IMPORT, request)
+    return FolderImportResultSchema.parse(result)
   },
   async getDashboard(): Promise<DashboardSummary> {
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.DASHBOARD_GET)

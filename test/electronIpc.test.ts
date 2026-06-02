@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   AppStatusSchema,
   DashboardSummarySchema,
+  FolderImportRequestSchema,
+  FolderImportResultSchema,
   IPC_CHANNELS,
   ManualEntityRequestSchema,
   ReviewApplySelectionRequestSchema,
@@ -63,6 +65,18 @@ describe('Electron IPC contract', () => {
       }).totals.practices
     ).toBe(0)
     expect(() => ScanPracticeRequestSchema.parse({ folderId: '' })).toThrow()
+  })
+
+  it('validates folder import payloads', () => {
+    expect(FolderImportRequestSchema.parse({ mode: 'clients_root' }).mode).toBe('clients_root')
+    expect(() => FolderImportRequestSchema.parse({ mode: 'unknown' })).toThrow()
+    expect(
+      FolderImportResultSchema.parse({
+        added: 1,
+        skipped: 0,
+        folders: [{ id: '400F', label: '400F', path: '/Studio/400F', matter: 'civile' }]
+      }).folders[0]!.id
+    ).toBe('400F')
   })
 
   it('allows review detail only through the explicit local detail schema', () => {

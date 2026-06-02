@@ -2,7 +2,7 @@
 // Caricamento e validazione della config (anonymcp.config.json).
 // ============================================================
 
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import type { AnonyMcpConfig, ExposedFolder } from './types.js'
@@ -65,6 +65,13 @@ export function loadConfig(configPath: string): AnonyMcpConfig {
     }
   }
   return config
+}
+
+/** Salva una config validata e normalizzata. Uso locale app/CLI, non MCP. */
+export function saveConfig(configPath: string, config: AnonyMcpConfig): void {
+  const abs = resolve(configPath)
+  const normalized = ConfigSchema.parse(config)
+  writeFileSync(abs, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
 }
 
 /**

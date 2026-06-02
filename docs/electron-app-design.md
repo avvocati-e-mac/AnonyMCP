@@ -434,6 +434,9 @@ Implementazione locale prevista/avviata:
   lista review e lista documenti sensibili bloccati.
 - il dettaglio review espone testo originale e nomi file solo alla UI locale; gli schemi lista
   restano separati e rifiutano campi come `originalText`.
+- il setup cartelle usa il dialog di sistema e supporta import manuale, cartella "Pratiche"
+  e struttura Clienti/Pratiche; i nomi identificanti vengono sostituiti da numeri opachi
+  ordinati per data di creazione.
 
 ```text
 +------------------------------------------------------------------+

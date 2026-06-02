@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const IPC_CHANNELS = {
   APP_STATUS: 'app:status',
+  FOLDERS_SELECT_IMPORT: 'folders:select-import',
   DASHBOARD_GET: 'dashboard:get',
   PRACTICE_SCAN: 'practice:scan',
   REVIEW_LIST: 'review:list',
@@ -14,6 +15,7 @@ export const IPC_CHANNELS = {
 } as const
 
 const MatterSchema = z.enum(['civile', 'penale', 'tributario', 'amministrativo', 'altro'])
+export const FolderImportModeSchema = z.enum(['manual', 'practices_root', 'clients_root'])
 const DocumentStatusSchema = z.enum(['quarantined', 'review_required', 'approved', 'superseded'])
 const SensitivityOverrideSchema = z.enum(['sensitive', 'not_sensitive'])
 export const EntityTypeSchema = z.enum([
@@ -44,6 +46,27 @@ export const AppStatusSchema = z.object({
 }).strict()
 
 export type AppStatus = z.infer<typeof AppStatusSchema>
+
+export type FolderImportMode = z.infer<typeof FolderImportModeSchema>
+
+export const FolderImportRequestSchema = z.object({
+  mode: FolderImportModeSchema
+}).strict()
+
+export const ImportedFolderSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  path: z.string(),
+  matter: MatterSchema.optional()
+}).strict()
+
+export const FolderImportResultSchema = z.object({
+  added: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  folders: z.array(ImportedFolderSchema)
+}).strict()
+
+export type FolderImportResult = z.infer<typeof FolderImportResultSchema>
 
 export const PracticeSummarySchema = z.object({
   folderId: z.string(),
@@ -163,6 +186,7 @@ export type CloudBlockedSensitiveDocument = z.infer<typeof CloudBlockedSensitive
 
 export interface AnonymcpElectronApi {
   getAppStatus: () => Promise<AppStatus>
+  selectAndImportFolders: (mode: FolderImportMode) => Promise<FolderImportResult>
   getDashboard: () => Promise<DashboardSummary>
   scanPractice: (folderId: string) => Promise<ScanPracticeResult>
   listReviewDocuments: (folderId?: string) => Promise<ReviewDocumentListItem[]>

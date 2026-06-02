@@ -17,6 +17,8 @@ import type {
   AppStatus,
   CloudBlockedSensitiveDocument,
   DashboardSummary,
+  FolderImportMode,
+  FolderImportResult,
   ReviewDocumentDetail,
   ReviewDocumentListItem
 } from '../../shared/ipc.js'
@@ -33,8 +35,11 @@ interface AppModel {
   loading: boolean
   error: string | null
   scanningFolder: string | null
+  importingMode: FolderImportMode | null
+  lastImport: FolderImportResult | null
   refresh: () => Promise<void>
   scanPractice: (folderId: string) => Promise<void>
+  selectAndImportFolders: (mode: FolderImportMode) => Promise<void>
 }
 
 function useAppModel(): AppModel {
@@ -45,6 +50,8 @@ function useAppModel(): AppModel {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [scanningFolder, setScanningFolder] = useState<string | null>(null)
+  const [importingMode, setImportingMode] = useState<FolderImportMode | null>(null)
+  const [lastImport, setLastImport] = useState<FolderImportResult | null>(null)
 
   async function refresh(): Promise<void> {
     setLoading(true)
@@ -86,6 +93,20 @@ function useAppModel(): AppModel {
     }
   }
 
+  async function selectAndImportFolders(mode: FolderImportMode): Promise<void> {
+    setImportingMode(mode)
+    setError(null)
+    try {
+      const result = await window.anonymcp.selectAndImportFolders(mode)
+      setLastImport(result)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setImportingMode(null)
+    }
+  }
+
   useEffect(() => {
     void refresh()
   }, [])
@@ -98,8 +119,11 @@ function useAppModel(): AppModel {
     loading,
     error,
     scanningFolder,
+    importingMode,
+    lastImport,
     refresh,
-    scanPractice
+    scanPractice,
+    selectAndImportFolders
   }
 }
 
@@ -213,7 +237,23 @@ function OnboardingScreen({ onDismiss }: { onDismiss: (permanent: boolean) => vo
   )
 }
 
-function SetupScreen({ status }: { status: AppStatus | null }): React.JSX.Element {
+function SetupScreen({
+  status,
+  importingMode,
+  lastImport,
+  onImport
+}: {
+  status: AppStatus | null
+  importingMode: FolderImportMode | null
+  lastImport: FolderImportResult | null
+  onImport: (mode: FolderImportMode) => void
+}): React.JSX.Element {
+  const options: { mode: FolderImportMode; title: string; body: string }[] = [
+    { mode: 'manual', title: 'Singola pratica', body: 'Scegli o trascina una o piu cartelle, ciascuna trattata come pratica.' },
+    { mode: 'practices_root', title: 'Cartella Pratiche', body: 'Una cartella principale contiene direttamente le sottocartelle pratica.' },
+    { mode: 'clients_root', title: 'Clienti / pratiche', body: 'Una cartella contiene clienti, e sotto ogni cliente ci sono le pratiche.' }
+  ]
+
   return (
     <main className="flex-1 bg-slate-50 p-6">
       <div className="mx-auto max-w-5xl space-y-5">
@@ -231,22 +271,28 @@ function SetupScreen({ status }: { status: AppStatus | null }): React.JSX.Elemen
                   Config non pronta: {status.configError}
                 </p>
               ) : null}
+              {lastImport ? (
+                <p className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                  Pratiche aggiunte: {lastImport.added}. Gia presenti o non valide: {lastImport.skipped}.
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          {[
-            ['Singola pratica', 'Scegli o trascina una o piu cartelle, ciascuna trattata come pratica.'],
-            ['Cartella Pratiche', 'Una cartella principale contiene direttamente le sottocartelle pratica.'],
-            ['Clienti / pratiche', 'Una cartella contiene clienti, e sotto ogni cliente ci sono le pratiche.']
-          ].map(([title, body]) => (
+          {options.map(({ mode, title, body }) => (
             <button
               key={title}
               type="button"
+              onClick={() => onImport(mode)}
+              disabled={importingMode != null}
               className="rounded-lg border border-slate-200 bg-white p-5 text-left hover:border-blue-300 hover:bg-blue-50"
             >
-              <div className="font-medium text-slate-900">{title}</div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium text-slate-900">{title}</span>
+                {importingMode === mode ? <Loader2 className="animate-spin text-blue-600" size={17} /> : null}
+              </div>
               <p className="mt-2 text-sm text-slate-600">{body}</p>
             </button>
           ))}
@@ -770,8 +816,11 @@ export default function App(): React.JSX.Element {
     loading,
     error,
     scanningFolder,
+    importingMode,
+    lastImport,
     refresh,
-    scanPractice
+    scanPractice,
+    selectAndImportFolders
   } = useAppModel()
   const [onboardingDismissed, setOnboardingDismissed] = useState(
     () => localStorage.getItem(ONBOARDING_KEY) === 'true'
@@ -821,7 +870,12 @@ export default function App(): React.JSX.Element {
           onRefresh={refresh}
         />
       ) : (
-        <SetupScreen status={status} />
+        <SetupScreen
+          status={status}
+          importingMode={importingMode}
+          lastImport={lastImport}
+          onImport={(mode) => void selectAndImportFolders(mode)}
+        />
       )}
     </div>
   )
