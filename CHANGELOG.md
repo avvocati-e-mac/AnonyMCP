@@ -26,6 +26,8 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 - Setup cartelle dalla UI Electron con dialog di sistema e tre modalità: pratiche manuali,
   cartella principale "Pratiche" e struttura Clienti/Pratiche. Gli ID/label vengono assegnati
   automaticamente come opachi quando il nome cartella sembra identificante.
+- L'inserimento manuale delle pratiche ha una schermata dedicata con drag and drop di una o
+  più cartelle e scelta alternativa tramite finestra di sistema.
 - Review locale delle bozze LLM in staging: la UI mostra la bozza re-idratata solo in locale e
   consente la promozione esplicita nella cartella finale della pratica.
 

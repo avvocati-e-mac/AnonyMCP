@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -43,6 +43,7 @@ interface AppModel {
   refresh: () => Promise<void>
   scanPractice: (folderId: string) => Promise<void>
   selectAndImportFolders: (mode: FolderImportMode) => Promise<void>
+  importDroppedFolders: (files: File[]) => Promise<void>
 }
 
 function useAppModel(): AppModel {
@@ -114,6 +115,20 @@ function useAppModel(): AppModel {
     }
   }
 
+  async function importDroppedFolders(files: File[]): Promise<void> {
+    setImportingMode('manual')
+    setError(null)
+    try {
+      const result = await window.anonymcp.importDroppedFolders('manual', files)
+      setLastImport(result)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setImportingMode(null)
+    }
+  }
+
   useEffect(() => {
     void refresh()
   }, [])
@@ -131,7 +146,8 @@ function useAppModel(): AppModel {
     lastImport,
     refresh,
     scanPractice,
-    selectAndImportFolders
+    selectAndImportFolders,
+    importDroppedFolders
   }
 }
 
@@ -249,18 +265,100 @@ function SetupScreen({
   status,
   importingMode,
   lastImport,
-  onImport
+  onImport,
+  onDropImport
 }: {
   status: AppStatus | null
   importingMode: FolderImportMode | null
   lastImport: FolderImportResult | null
   onImport: (mode: FolderImportMode) => void
+  onDropImport: (files: File[]) => void
 }): React.JSX.Element {
+  const [manualEntry, setManualEntry] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const options: { mode: FolderImportMode; title: string; body: string }[] = [
     { mode: 'manual', title: 'Singola pratica', body: 'Scegli o trascina una o piu cartelle, ciascuna trattata come pratica.' },
     { mode: 'practices_root', title: 'Cartella Pratiche', body: 'Una cartella principale contiene direttamente le sottocartelle pratica.' },
     { mode: 'clients_root', title: 'Clienti / pratiche', body: 'Una cartella contiene clienti, e sotto ogni cliente ci sono le pratiche.' }
   ]
+
+  function handleDrop(event: DragEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    setDragging(false)
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length > 0) onDropImport(files)
+  }
+
+  const statusBlock = (
+    <>
+      {status?.configError ? (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Config non pronta: {status.configError}
+        </p>
+      ) : null}
+      {lastImport ? (
+        <p className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          Pratiche aggiunte: {lastImport.added}. Gia presenti o non valide: {lastImport.skipped}.
+        </p>
+      ) : null}
+    </>
+  )
+
+  if (manualEntry) {
+    return (
+      <main className="flex-1 bg-slate-50 p-6">
+        <div className="mx-auto max-w-5xl space-y-5">
+          <div className="rounded-lg border border-slate-200 bg-white p-6">
+            <button
+              type="button"
+              onClick={() => setManualEntry(false)}
+              className="mb-4 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              Indietro
+            </button>
+            <div className="flex items-start gap-4">
+              <FolderPlus className="mt-1 text-blue-600" size={26} />
+              <div className="flex-1">
+                <h1 className="text-lg font-semibold text-slate-900">Inserimento manuale pratica</h1>
+                <p className="mt-1 text-sm text-slate-600">
+                  Trascina una o piu cartelle pratica, oppure selezionale dalla finestra del computer.
+                </p>
+                {statusBlock}
+              </div>
+            </div>
+          </div>
+
+          <div
+            onDragOver={(event) => {
+              event.preventDefault()
+              setDragging(true)
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={[
+              'flex min-h-64 flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white p-8 text-center',
+              dragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300'
+            ].join(' ')}
+          >
+            <FolderPlus className="text-blue-600" size={34} />
+            <h2 className="mt-4 text-base font-medium text-slate-900">Rilascia qui le cartelle pratica</h2>
+            <p className="mt-2 max-w-md text-sm text-slate-600">
+              Ogni cartella viene trattata come una pratica distinta. Le etichette MCP saranno rese opache automaticamente.
+            </p>
+            <button
+              type="button"
+              onClick={() => onImport('manual')}
+              disabled={importingMode != null}
+              className="mt-5 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {importingMode === 'manual' ? <Loader2 className="animate-spin" size={16} /> : <FolderPlus size={16} />}
+              Scegli cartelle dal computer
+            </button>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="flex-1 bg-slate-50 p-6">
@@ -274,16 +372,7 @@ function SetupScreen({
                 Non ci sono ancora pratiche condivise con AnonyMCP. Seleziona cartelle pratica o
                 una cartella principale da cui importarle in batch.
               </p>
-              {status?.configError ? (
-                <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Config non pronta: {status.configError}
-                </p>
-              ) : null}
-              {lastImport ? (
-                <p className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-                  Pratiche aggiunte: {lastImport.added}. Gia presenti o non valide: {lastImport.skipped}.
-                </p>
-              ) : null}
+              {statusBlock}
             </div>
           </div>
         </div>
@@ -293,7 +382,10 @@ function SetupScreen({
             <button
               key={title}
               type="button"
-              onClick={() => onImport(mode)}
+              onClick={() => {
+                if (mode === 'manual') setManualEntry(true)
+                else onImport(mode)
+              }}
               disabled={importingMode != null}
               className="rounded-lg border border-slate-200 bg-white p-5 text-left hover:border-blue-300 hover:bg-blue-50"
             >
@@ -953,7 +1045,8 @@ export default function App(): React.JSX.Element {
     lastImport,
     refresh,
     scanPractice,
-    selectAndImportFolders
+    selectAndImportFolders,
+    importDroppedFolders
   } = useAppModel()
   const [onboardingDismissed, setOnboardingDismissed] = useState(
     () => localStorage.getItem(ONBOARDING_KEY) === 'true'
@@ -1009,6 +1102,7 @@ export default function App(): React.JSX.Element {
           importingMode={importingMode}
           lastImport={lastImport}
           onImport={(mode) => void selectAndImportFolders(mode)}
+          onDropImport={(files) => void importDroppedFolders(files)}
         />
       )}
     </div>

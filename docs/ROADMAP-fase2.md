@@ -23,7 +23,7 @@ MCP (resta MCP, client LLM esterno), non lo sostituisce. NON si generano file *a
 | M4-Design | Design app Electron | Specifica UI/funzionamento, schermate ASCII, sicurezza Electron e red-team in [`electron-app-design`](electron-app-design.md) | documentata |
 | M4 | Scaffold Electron | App che avvolge il server MCP stdio (main/preload sandbox) | baseline + dashboard IPC implementate |
 | M4-Service | API locale review/sensibilità | Facciata locale per dashboard, review, pending write e override sensibilità deciso dall'avvocato | implementata |
-| M5 | UI review entità | Review grafica (sostituisce TUI); consenso cartelle; log live | review base + import cartelle + bozze LLM implementati |
+| M5 | UI review entità | Review grafica (sostituisce TUI); consenso cartelle; log live | review base + import cartelle via dialog/drop + bozze LLM implementati |
 | M6 | Hardening produzione | keychain OS, audit trail, sandbox parser, DPIA/registro | pianificata |
 | M7 | Packaging 4-OS | estendere `release.yml` a installer .dmg/.exe/.AppImage | pianificata |
 

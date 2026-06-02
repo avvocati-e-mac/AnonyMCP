@@ -1,8 +1,9 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import {
   AppStatusSchema,
   CloudBlockedSensitiveDocumentListSchema,
   DashboardSummarySchema,
+  FolderImportPathsRequestSchema,
   FolderImportRequestSchema,
   FolderImportResultSchema,
   IPC_CHANNELS,
@@ -43,6 +44,14 @@ const api: AnonymcpElectronApi = Object.freeze({
   async selectAndImportFolders(mode: FolderImportMode): Promise<FolderImportResult> {
     const request = FolderImportRequestSchema.parse({ mode })
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.FOLDERS_SELECT_IMPORT, request)
+    return FolderImportResultSchema.parse(result)
+  },
+  async importDroppedFolders(mode: FolderImportMode, files: File[]): Promise<FolderImportResult> {
+    const paths = files
+      .map((file) => webUtils.getPathForFile(file))
+      .filter((path) => path.length > 0)
+    const request = FolderImportPathsRequestSchema.parse({ mode, paths })
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.FOLDERS_IMPORT_PATHS, request)
     return FolderImportResultSchema.parse(result)
   },
   async getDashboard(): Promise<DashboardSummary> {

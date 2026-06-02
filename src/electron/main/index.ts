@@ -10,13 +10,14 @@ import {
 import { join } from 'node:path'
 import { loadConfig, saveConfig } from '../../config.js'
 import { LocalReviewService } from '../../app/reviewService.js'
-import { buildExposedFolders, discoverPracticeFolders } from '../../app/folderImport.js'
+import { buildExposedFolders, discoverPracticeFolders, type FolderImportMode } from '../../app/folderImport.js'
 import { log } from '../../util/logger.js'
 import {
   AppStatusSchema,
   BooleanResultSchema,
   CloudBlockedSensitiveDocumentListSchema,
   DashboardSummarySchema,
+  FolderImportPathsRequestSchema,
   FolderImportRequestSchema,
   FolderImportResultSchema,
   IPC_CHANNELS,
@@ -127,6 +128,20 @@ function loadConfigOrDefault(): AnonyMcpConfig {
   }
 }
 
+function importPracticePaths(paths: string[], mode: FolderImportMode): unknown {
+  const config = loadConfigOrDefault()
+  const candidates = discoverPracticeFolders(paths, mode)
+  const folders = buildExposedFolders(candidates, { existingFolders: config.folders })
+  const nextConfig: AnonyMcpConfig = { ...config, folders: [...config.folders, ...folders] }
+  saveConfig(configPath(), nextConfig)
+  clearServiceCache()
+  return FolderImportResultSchema.parse({
+    added: folders.length,
+    skipped: candidates.length - folders.length,
+    folders
+  })
+}
+
 function clearServiceCache(): void {
   serviceCache?.service.close()
   serviceCache = null
@@ -171,17 +186,13 @@ function registerIpcHandlers(): void {
       return FolderImportResultSchema.parse({ added: 0, skipped: 0, folders: [] })
     }
 
-    const config = loadConfigOrDefault()
-    const candidates = discoverPracticeFolders(selection.filePaths, request.mode)
-    const folders = buildExposedFolders(candidates, { existingFolders: config.folders })
-    const nextConfig: AnonyMcpConfig = { ...config, folders: [...config.folders, ...folders] }
-    saveConfig(configPath(), nextConfig)
-    clearServiceCache()
-    return FolderImportResultSchema.parse({
-      added: folders.length,
-      skipped: candidates.length - folders.length,
-      folders
-    })
+    return importPracticePaths(selection.filePaths, request.mode)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.FOLDERS_IMPORT_PATHS, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = FolderImportPathsRequestSchema.parse(payload)
+    return importPracticePaths(request.paths, request.mode)
   })
 
   ipcMain.handle(IPC_CHANNELS.DASHBOARD_GET, (event) => {

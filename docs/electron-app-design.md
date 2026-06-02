@@ -435,8 +435,9 @@ Implementazione locale prevista/avviata:
 - il dettaglio review espone testo originale e nomi file solo alla UI locale; gli schemi lista
   restano separati e rifiutano campi come `originalText`.
 - il setup cartelle usa il dialog di sistema e supporta import manuale, cartella "Pratiche"
-  e struttura Clienti/Pratiche; i nomi identificanti vengono sostituiti da numeri opachi
-  ordinati per data di creazione.
+  e struttura Clienti/Pratiche; l'import manuale supporta anche drag and drop di una o piu'
+  cartelle tramite `webUtils.getPathForFile`; i nomi identificanti vengono sostituiti da
+  numeri opachi ordinati per data di creazione.
 - le bozze LLM in staging hanno lista leggera e dettaglio locale separato; il testo re-idratato
   compare solo nella UI locale prima della promozione finale.
 

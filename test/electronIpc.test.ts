@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AppStatusSchema,
   DashboardSummarySchema,
+  FolderImportPathsRequestSchema,
   FolderImportRequestSchema,
   FolderImportResultSchema,
   IPC_CHANNELS,
@@ -73,6 +74,9 @@ describe('Electron IPC contract', () => {
   it('validates folder import payloads', () => {
     expect(FolderImportRequestSchema.parse({ mode: 'clients_root' }).mode).toBe('clients_root')
     expect(() => FolderImportRequestSchema.parse({ mode: 'unknown' })).toThrow()
+    expect(FolderImportPathsRequestSchema.parse({ mode: 'manual', paths: ['/Studio/400F'] }).paths).toHaveLength(1)
+    expect(() => FolderImportPathsRequestSchema.parse({ mode: 'manual', paths: [] })).toThrow()
+    expect(() => FolderImportPathsRequestSchema.parse({ mode: 'manual', paths: ['/Studio/400F'], realName: 'Mario Rossi' })).toThrow()
     expect(
       FolderImportResultSchema.parse({
         added: 1,

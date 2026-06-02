@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const IPC_CHANNELS = {
   APP_STATUS: 'app:status',
   FOLDERS_SELECT_IMPORT: 'folders:select-import',
+  FOLDERS_IMPORT_PATHS: 'folders:import-paths',
   DASHBOARD_GET: 'dashboard:get',
   PRACTICE_SCAN: 'practice:scan',
   REVIEW_LIST: 'review:list',
@@ -54,6 +55,10 @@ export type FolderImportMode = z.infer<typeof FolderImportModeSchema>
 
 export const FolderImportRequestSchema = z.object({
   mode: FolderImportModeSchema
+}).strict()
+
+export const FolderImportPathsRequestSchema = FolderImportRequestSchema.extend({
+  paths: z.array(z.string().min(1)).min(1).max(200)
 }).strict()
 
 export const ImportedFolderSchema = z.object({
@@ -219,6 +224,7 @@ export type CloudBlockedSensitiveDocument = z.infer<typeof CloudBlockedSensitive
 export interface AnonymcpElectronApi {
   getAppStatus: () => Promise<AppStatus>
   selectAndImportFolders: (mode: FolderImportMode) => Promise<FolderImportResult>
+  importDroppedFolders: (mode: FolderImportMode, files: File[]) => Promise<FolderImportResult>
   getDashboard: () => Promise<DashboardSummary>
   scanPractice: (folderId: string) => Promise<ScanPracticeResult>
   listReviewDocuments: (folderId?: string) => Promise<ReviewDocumentListItem[]>
