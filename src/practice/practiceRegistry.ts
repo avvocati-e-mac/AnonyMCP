@@ -13,10 +13,19 @@ import type { AnonymizationResult, DetectedEntity, DocumentStatus, ExposedFolder
 import { isSupported, isTextDocument } from '../pipeline/toMarkdown.js'
 import { processText } from '../pipeline/documentService.js'
 import { SessionManager } from '../engine/sessionManager.js'
+import { applyPseudonyms, buildEntityRegex } from '../engine/anonymizer.js'
 import { classifySensitivity } from '../pipeline/riskScorer.js'
 import { sanitizeId, isInternalArtifact } from '../util/pathGuard.js'
 import { hmac, randomKey, sha256 } from '../util/crypto.js'
 import { buildCache, saveCache, loadCache } from './practiceStore.js'
+import { buildDictionary, saveDictionary, loadDictionary } from './entityDictionary.js'
+import {
+  loadApprovals,
+  recordApproval,
+  isApproved,
+  fileSourceHash
+} from './approvalStore.js'
+import { ChunkIndex, indexPath } from '../search/chunkIndex.js'
 import { log } from '../util/logger.js'
 
 export interface DocEntry {
@@ -24,6 +33,8 @@ export interface DocEntry {
   docId: string
   filePath: string
   status: DocumentStatus
+  /** Hash del contenuto del file (lega l'approvazione a questa versione). */
+  sourceHash: string
   /** Risultato pseudonimizzato (presente dopo la scansione). */
   result?: AnonymizationResult
 }
@@ -33,6 +44,18 @@ export interface PracticeEntry {
   /** SessionManager condiviso tra i documenti della pratica (coerenza pseudonimi). */
   session: SessionManager
   docs: Map<string, DocEntry>
+  /** Indice di ricerca BM25 (FTS5), creato pigramente al primo uso. */
+  index?: ChunkIndex
+}
+
+/** Una entità in coda di revisione (uso LOCALE, mai esposta via MCP). */
+export interface ReviewEntity {
+  type: DetectedEntity['type']
+  /** Testo originale — solo per la TUI/app locale, MAI verso l'LLM. */
+  originalText: string
+  pseudonym: string
+  occurrences: number
+  source: DetectedEntity['source']
 }
 
 export class PracticeRegistry {
@@ -99,10 +122,16 @@ export class PracticeRegistry {
 
   /**
    * (Ri)scansiona una pratica: pseudonimizza ogni documento testuale.
-   * I documenti restano in quarantena se requireManualApproval è attivo.
-   * Ritorna un sommario (senza valori reali).
+   * I documenti restano in `review_required` se requireManualApproval è attivo,
+   * altrimenti vengono auto-approvati e indicizzati. Ritorna un sommario.
+   *
+   * Coerenza pseudonimi: precarica sia la cache cifrata (hash) sia il dizionario
+   * di pratica in chiaro (testo originale, ADR-0003), così le entità note della
+   * pratica riusano gli stessi pseudonimi senza ri-rilevarle da zero.
    */
-  async scan(folderId: string): Promise<{ scanned: number; quarantined: number; skipped: number }> {
+  async scan(
+    folderId: string
+  ): Promise<{ scanned: number; reviewRequired: number; approved: number; skipped: number }> {
     const practice = this.practices.get(folderId)
     if (!practice) throw new Error(`Pratica sconosciuta: ${folderId}`)
 
@@ -128,40 +157,255 @@ export class PracticeRegistry {
       }
     }
 
+    // Precarica il dizionario di pratica in chiaro (entità note → stessi pseudonimi).
+    const dict = loadDictionary(practice.folder.path)
+    if (dict) {
+      const n = practice.session.importFromDictionary(dict)
+      log.info('Dizionario pratica precaricato', { folderId, entries: n })
+    }
+
+    // Stato di approvazione persistito (condiviso con la TUI/altri processi).
+    const approvals = loadApprovals(practice.folder.path)
+
     let scanned = 0
-    let quarantined = 0
+    let reviewRequired = 0
+    let approved = 0
     const allEntities: DetectedEntity[] = []
 
     for (const filePath of files) {
       const docId = this.docIdFor(filePath)
       const raw = readFileSync(filePath, 'utf8')
+      const docHash = fileSourceHash(raw)
       const result = await processText(raw, { session: practice.session })
-      const status: DocumentStatus = this.requireManualApproval ? 'quarantined' : 'approved'
-      practice.docs.set(docId, { docId, filePath, status, result })
+      // Un documento è approvato se: auto-approve, OPPURE è stato approvato su disco
+      // (dalla TUI) E il file non è cambiato dall'approvazione (sourceHash combacia).
+      const isAutoApprove = !this.requireManualApproval
+      const status: DocumentStatus =
+        isAutoApprove || isApproved(approvals, docHash) ? 'approved' : 'review_required'
+      practice.docs.set(docId, { docId, filePath, status, sourceHash: docHash, result })
       allEntities.push(...result.entities)
       scanned++
-      if (status === 'quarantined') quarantined++
+      if (status === 'review_required') reviewRequired++
+      else {
+        approved++
+        this.indexDoc(practice, docId, result.text)
+      }
       log.info('Documento processato', { folderId, docId, status, sensitive: result.sensitive })
     }
 
-    // Persiste la cache cifrata (solo hash, niente PII in chiaro) per la prossima sessione.
+    // SECONDA PASSATA (anti-leak): il dizionario di sessione si popola DURANTE il
+    // primo giro, quindi un documento processato presto può contenere ancora in
+    // chiaro una parte rilevata solo in un documento successivo (ordine alfabetico).
+    // Con la sessione ora completa, ri-processa ogni documento che potrebbe avere
+    // nuovi termini noti applicabili: `processText` riusa la stessa session, quindi
+    // `enrichFromKnownTerms` (al suo interno) ora trova anche le parti note tardi.
+    // Si ri-processa solo se il numero di entità note è cresciuto rispetto al 1° giro.
+    for (const doc of practice.docs.values()) {
+      if (!doc.result) continue
+      let raw2: string
+      try {
+        raw2 = readFileSync(doc.filePath, 'utf8')
+      } catch {
+        continue // file non più leggibile: tieni il risultato della prima passata
+      }
+      const before = doc.result.entities.length
+      const reprocessed = await processText(raw2, { session: practice.session })
+      if (reprocessed.entities.length !== before) {
+        doc.result = reprocessed
+        if (doc.status === 'approved') this.indexDoc(practice, doc.docId, reprocessed.text)
+      }
+    }
     if (this.cachePassphrase && scanned > 0) {
       const confirmed = !this.requireManualApproval // confermate solo se auto-approvate
       const cache = buildCache(folderId, sourceHash, allEntities, confirmed)
       saveCache(practice.folder.path, cache, this.cachePassphrase)
     }
 
+    // Persiste/aggiorna il dizionario di pratica in chiaro (entità note per la prossima volta).
+    // La persistenza è best-effort: un errore di scrittura non deve far fallire lo scan.
+    if (scanned > 0) {
+      try {
+        saveDictionary(practice.folder.path, buildDictionary(folderId, allEntities))
+      } catch (err) {
+        log.warn('Salvataggio dizionario pratica fallito (proseguo)', {
+          folderId,
+          error: err instanceof Error ? err.message : String(err)
+        })
+      }
+    }
+
     this.onResourcesChanged?.()
-    return { scanned, quarantined, skipped }
+    return { scanned, reviewRequired, approved, skipped }
   }
 
-  /** Approva un documento in quarantena (human-in-the-loop). */
+  /**
+   * Indice di ricerca della pratica, creato pigramente al primo uso. Ritorna null
+   * se non è possibile aprire il file (es. directory non scrivibile): in tal caso
+   * la ricerca è degradata ma lo scan/approvazione NON fallisce (la ricerca è un
+   * miglioramento, non un requisito di correttezza).
+   */
+  private getIndex(practice: PracticeEntry): ChunkIndex | null {
+    if (!practice.index) {
+      try {
+        practice.index = new ChunkIndex(indexPath(practice.folder.path))
+      } catch (err) {
+        log.warn('Indice di ricerca non disponibile (ricerca degradata)', {
+          folderId: practice.folder.id,
+          error: err instanceof Error ? err.message : String(err)
+        })
+        return null
+      }
+    }
+    return practice.index
+  }
+
+  /** Indicizza un documento approvato (testo pseudonimizzato) per la ricerca BM25. */
+  private indexDoc(practice: PracticeEntry, docId: string, text: string): void {
+    this.getIndex(practice)?.indexDocument(docId, text)
+  }
+
+  /**
+   * Approva un documento in revisione (human-in-the-loop). All'approvazione il
+   * documento viene indicizzato in FTS5 e diventa esponibile come Resource.
+   */
   approve(folderId: string, docId: string): boolean {
-    const doc = this.practices.get(folderId)?.docs.get(docId)
-    if (!doc) return false
+    const practice = this.practices.get(folderId)
+    const doc = practice?.docs.get(docId)
+    if (!practice || !doc) return false
     doc.status = 'approved'
+    if (doc.result) this.indexDoc(practice, docId, doc.result.text)
+    // Persiste l'approvazione su disco, così è visibile agli altri processi
+    // (es. il server di Claude Desktop) senza riavvio, legandola al sourceHash.
+    recordApproval(practice.folder.path, folderId, doc.sourceHash)
     this.onResourcesChanged?.()
     return true
+  }
+
+  /**
+   * Rilegge lo stato di approvazione dal disco e aggiorna i documenti in RAM.
+   * Permette al server long-running (Claude Desktop) di vedere le approvazioni
+   * fatte da un altro processo (la TUI) senza riavvio. Da chiamare prima di
+   * esporre/cercare. Ritorna true se qualche stato è cambiato.
+   */
+  refreshApprovals(folderId: string): boolean {
+    const practice = this.practices.get(folderId)
+    if (!practice) return false
+    // Con auto-approve non c'è gate di review: lo stato non dipende dal file su disco.
+    if (!this.requireManualApproval) return false
+    const approvals = loadApprovals(practice.folder.path)
+    let changed = false
+    for (const doc of practice.docs.values()) {
+      const nowApproved = isApproved(approvals, doc.sourceHash)
+      if (nowApproved && doc.status !== 'approved') {
+        // Promozione: la TUI ha approvato → esponi e indicizza.
+        doc.status = 'approved'
+        if (doc.result) this.indexDoc(practice, doc.docId, doc.result.text)
+        changed = true
+      } else if (!nowApproved && doc.status === 'approved') {
+        // Revoca: l'approvazione è sparita dal disco (revocata o file cambiato) →
+        // ritira l'esposizione e rimuovi dall'indice. È un gate di sicurezza:
+        // niente esposizione senza approvazione valida.
+        doc.status = 'review_required'
+        practice.index?.removeDocument(doc.docId)
+        changed = true
+      }
+    }
+    if (changed) this.onResourcesChanged?.()
+    return changed
+  }
+
+  /** Rilegge lo stato di approvazione di TUTTE le pratiche dal disco. */
+  refreshAllApprovals(): void {
+    for (const folderId of this.practices.keys()) this.refreshApprovals(folderId)
+  }
+
+  /**
+   * Coda di revisione per uso LOCALE (TUI / app desktop), MAI esposta via MCP:
+   * restituisce le entità rilevate (con testo originale) di un documento, così
+   * l'umano può confermarle/correggerle prima di approvare. Non passa mai per
+   * Resources/tool dell'LLM.
+   */
+  getReviewQueue(folderId: string, docId: string): ReviewEntity[] {
+    const doc = this.practices.get(folderId)?.docs.get(docId)
+    if (!doc?.result) return []
+    return doc.result.entities.map((e) => ({
+      type: e.type,
+      originalText: e.originalText,
+      pseudonym: e.pseudonym,
+      occurrences: e.occurrences,
+      source: e.source
+    }))
+  }
+
+  /**
+   * Aggiunge MANUALMENTE un'entità a un documento (testo che il NER ha mancato:
+   * il falso negativo è il rischio più grave — PII in chiaro verso l'LLM). Genera
+   * lo pseudonimo coerente via SessionManager, conta le occorrenze e RI-APPLICA gli
+   * pseudonimi a tutto il testo del documento (`doc.result.text`). L'entità entra in
+   * `doc.result.entities`, quindi confluirà nel dizionario di pratica all'export.
+   *
+   * Ritorna l'entità creata, o null se il termine è vuoto o non compare nel testo
+   * originale del documento (non avrebbe alcun effetto). Uso LOCALE (TUI/app),
+   * mai esposto via MCP.
+   */
+  addManualEntity(
+    folderId: string,
+    docId: string,
+    originalText: string,
+    type: DetectedEntity['type']
+  ): DetectedEntity | null {
+    const practice = this.practices.get(folderId)
+    const doc = practice?.docs.get(docId)
+    if (!practice || !doc?.result) return null
+
+    const term = originalText.trim()
+    if (term.length === 0) return null
+
+    // Il testo originale del documento è sul disco (già noto da scan); serve per
+    // contare le occorrenze e ri-applicare gli pseudonimi sul sorgente.
+    let sourceText: string
+    try {
+      sourceText = readFileSync(doc.filePath, 'utf8')
+    } catch {
+      return null
+    }
+
+    const re = buildEntityRegex(term)
+    const matches = sourceText.match(re)
+    if (!matches || matches.length === 0) return null // non presente: nessun effetto
+
+    // Evita duplicati: se un'entità con stesso testo (case-insensitive) esiste già,
+    // non la ri-aggiunge.
+    const exists = doc.result.entities.some(
+      (e) => e.originalText.toLowerCase() === term.toLowerCase()
+    )
+    if (exists) return null
+
+    const pseudonym = practice.session.getOrCreatePseudonym(term, type)
+    const entity: DetectedEntity = {
+      type,
+      originalText: term,
+      pseudonym,
+      occurrences: matches.length,
+      source: 'manual'
+    }
+    doc.result.entities.push(entity)
+    // Ri-anonimizza l'intero documento con la lista aggiornata (longest-match).
+    doc.result.text = applyPseudonyms(sourceText, doc.result.entities)
+    return entity
+  }
+
+  /** Esporta il dizionario di pratica (testo in chiaro) accanto ai documenti. */
+  exportDictionary(folderId: string): number {
+    const practice = this.practices.get(folderId)
+    if (!practice) throw new Error(`Pratica sconosciuta: ${folderId}`)
+    const allEntities: DetectedEntity[] = []
+    for (const doc of practice.docs.values()) {
+      if (doc.result) allEntities.push(...doc.result.entities)
+    }
+    const dict = buildDictionary(folderId, allEntities)
+    saveDictionary(practice.folder.path, dict)
+    return dict.entries.length
   }
 
   /**
@@ -191,30 +435,53 @@ export class PracticeRegistry {
     return out
   }
 
+  /**
+   * Ricerca BM25 sui chunk dei documenti APPROVATI di una pratica.
+   * Hard gate implicito: l'indice contiene solo documenti approvati (vedi scan/approve),
+   * quindi una pratica non revisionata non restituisce alcun testo.
+   * Ritorna array vuoto se non c'è ancora un indice.
+   */
+  search(folderId: string, query: string, limit = 10): { docId: string; excerpt: string }[] {
+    const practice = this.practices.get(folderId)
+    if (!practice?.index) return []
+    return practice.index.search(query, limit).map((hit) => ({
+      docId: hit.docId,
+      excerpt: hit.text
+    }))
+  }
+
   /** Stato di una pratica (conteggi, NON valori reali). */
   status(folderId: string): {
     label: string
     approved: number
-    quarantined: number
+    reviewRequired: number
     entitiesByType: Record<string, number>
     sensitiveDocs: number
   } {
     const p = this.practices.get(folderId)
     if (!p) throw new Error(`Pratica sconosciuta: ${folderId}`)
     let approved = 0
-    let quarantined = 0
+    let reviewRequired = 0
     let sensitiveDocs = 0
     for (const doc of p.docs.values()) {
       if (doc.status === 'approved') approved++
-      else quarantined++
+      else if (doc.status === 'review_required' || doc.status === 'quarantined') reviewRequired++
       if (doc.result?.sensitive) sensitiveDocs++
     }
     return {
       label: p.folder.label,
       approved,
-      quarantined,
+      reviewRequired,
       entitiesByType: p.session.getStats().byType,
       sensitiveDocs
+    }
+  }
+
+  /** Chiude gli indici di ricerca aperti (cleanup su shutdown). */
+  closeIndexes(): void {
+    for (const p of this.practices.values()) {
+      p.index?.close()
+      p.index = undefined
     }
   }
 }

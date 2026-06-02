@@ -25,7 +25,7 @@ export type EntityType =
   | 'PROTOCOLLO'
 
 /** Origine di un'entità rilevata — usato per filtri e diagnostica. */
-export type EntitySource = 'regex' | 'ner' | 'coref' | 'manual'
+export type EntitySource = 'regex' | 'ner' | 'coref' | 'manual' | 'dictionary'
 
 /** Una singola entità trovata in un documento. */
 export interface DetectedEntity {
@@ -97,8 +97,33 @@ export interface PracticeCache {
   entries: PracticeCacheEntry[]
 }
 
-/** Stato di approvazione di un documento. */
-export type DocumentStatus = 'quarantined' | 'approved'
+/**
+ * Stato di un documento nel ciclo di vita scan → review → esposizione.
+ * - `quarantined`: scansionato, non ancora revisionato (requireManualApproval).
+ * - `review_required`: in coda per la revisione umana delle entità (alias semantico
+ *   di quarantined quando si usa il flusso di review esplicito con la TUI).
+ * - `approved`: revisionato e approvato, esposto come Resource e indicizzato.
+ * - `superseded`: il file sorgente è cambiato; la versione approvata è obsoleta e
+ *   va riscansionata.
+ */
+export type DocumentStatus = 'quarantined' | 'review_required' | 'approved' | 'superseded'
+
+/** Una voce del dizionario di pratica (formato Anonimator, testo in chiaro). Vedi ADR-0003. */
+export interface EntityDictionaryEntry {
+  /** Testo originale dell'entità (in chiaro; il file resta locale, mai esposto via MCP). */
+  original: string
+  pseudonym: string
+  type: EntityType
+}
+
+/** Dizionario di pratica esportabile/importabile, salvato accanto ai documenti. */
+export interface EntityDictionary {
+  version: 1
+  practiceId: string
+  /** ISO 8601 del momento di esportazione. */
+  exportedAt: string
+  entries: EntityDictionaryEntry[]
+}
 
 /** Esito della pseudonimizzazione di un documento. */
 export interface AnonymizationResult {

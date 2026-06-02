@@ -9,6 +9,8 @@
 //                         per dati sensibili; bypassa la quarantena).
 // ============================================================
 
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { loadConfig } from './config.js'
 import { buildServer } from './server.js'
@@ -33,7 +35,13 @@ async function main(): Promise<void> {
     log.warn('ANONYMCP_CACHE_KEY non impostata: cache pratica disabilitata (forward-only)')
   }
 
-  const { server, registry } = buildServer(config, cachePassphrase)
+  // projectDir = cartella che contiene dist/ (questo file è dist/index.js).
+  const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  const { server, registry } = buildServer(config, {
+    cachePassphrase,
+    projectDir,
+    configPath: resolve(configPath)
+  })
 
   // Scansione iniziale di tutte le pratiche (i documenti vanno in quarantena
   // se requireManualApproval è attivo).

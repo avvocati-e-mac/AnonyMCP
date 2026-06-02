@@ -36,15 +36,22 @@ describe('crypto AES-256-GCM', () => {
     expect(constantTimeEqual(Buffer.from('aa'), Buffer.from('ab'))).toBe(false)
   })
 
-  it('usa un IV unico per ogni cifratura (no riuso nonce GCM)', () => {
-    // I 12 byte di IV stanno subito dopo i 16 di salt nel blob.
-    // NB: scrypt è volutamente lento (KDF) → poche iterazioni bastano a provare l'unicità.
-    const n = 25
-    const ivs = new Set<string>()
-    for (let i = 0; i < n; i++) {
-      const blob = encrypt('x', 'k')
-      ivs.add(blob.subarray(16, 28).toString('hex'))
-    }
-    expect(ivs.size).toBe(n)
-  })
+  it(
+    'usa un IV unico per ogni cifratura (no riuso nonce GCM)',
+    () => {
+      // I 12 byte di IV stanno subito dopo i 16 di salt nel blob.
+      // NB: ogni encrypt esegue scrypt (KDF volutamente lento): con la suite intera
+      //     in parallelo le N cifrature possono superare il timeout di default (5s),
+      //     quindi diamo a questo test un timeout esplicito generoso. L'asserzione
+      //     resta: N cifrature → N IV distinti.
+      const n = 25
+      const ivs = new Set<string>()
+      for (let i = 0; i < n; i++) {
+        const blob = encrypt('x', 'k')
+        ivs.add(blob.subarray(16, 28).toString('hex'))
+      }
+      expect(ivs.size).toBe(n)
+    },
+    20_000
+  )
 })

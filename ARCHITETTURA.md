@@ -116,14 +116,20 @@ sequenceDiagram
 ## 6. Stati di un documento
 ```mermaid
 stateDiagram-v2
-  [*] --> Quarantined: scan_practice
-  Quarantined --> Approved: approvazione umana
-  Approved --> [*]: esposto come Resource
-  note right of Quarantined
-    non listato tra le Resources
-    (requireManualApproval = on)
+  [*] --> ReviewRequired: scan_practice (requireManualApproval)
+  [*] --> Approved: scan_practice (auto-approve)
+  ReviewRequired --> Approved: review umana (TUI) → approve
+  Approved --> [*]: esposto come Resource + indicizzato (BM25)
+  Approved --> Superseded: file sorgente cambiato
+  Superseded --> ReviewRequired: ri-scan
+  note right of ReviewRequired
+    non listato tra le Resources,
+    non ricercabile (hard gate)
   end note
 ```
+
+La revisione umana avviene tramite la TUI di Fase 1 (`npm run review -- --practice <id>`):
+lista entità colorata + anteprima Originale/Anonimizzato. Vedi `src/tui/`. Fase 2 = app Electron.
 
 ## 7. Sicurezza e privacy
 Sintesi; dettaglio in [security-invariants](docs/agent-guides/security-invariants.md) e
@@ -139,10 +145,12 @@ Sintesi; dettaglio in [security-invariants](docs/agent-guides/security-invariant
 Cifratura fascicoli (art. 32), segreto professionale (art. 13 C.D.F.), oscuramento obbligatorio
 categorie protette (art. 52 D.Lgs. 196/2003), DPIA per dati penali/sanitari massivi.
 
-## 8. Token-minimization (Fase 2)
-Esporre **chunk rilevanti** pseudonimizzati, non documenti interi, indicizzati con **BM25
-cifrato** (SQLite FTS5 + SQLCipher; non vettori, over-engineering senza GPU). Ricerca per nome
-reale via **query-translator locale** (reale→placeholder), mai dal server MCP.
+## 8. Token-minimization — ricerca BM25 (implementata)
+Esponiamo **chunk rilevanti** pseudonimizzati, non documenti interi, indicizzati con **BM25**
+(SQLite FTS5; non vettori, over-engineering senza GPU). Vedi `src/search/chunkIndex.ts` e
+[ADR-0002](docs/adr/0002-search-bm25.md). Solo i documenti approvati sono indicizzati (hard gate).
+Fase 1: tokenizer `unicode61` senza stemming. Fase 2 (da valutare): stemming italiano (Snowball)
+e ricerca ibrida BM25+embedding locale. La cifratura dell'indice è opzionale ([ADR-0001](docs/adr/0001-encryption-at-rest-optional.md)).
 
 ## 9. Processo di sviluppo (come è stato costruito)
 Metodo human-in-the-loop (antirez), commit atomici, decisioni validate da consigli LLM. Storia:

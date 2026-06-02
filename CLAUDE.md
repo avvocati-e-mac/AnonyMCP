@@ -6,13 +6,35 @@ Fase 1: server stdio standalone (gestisce `.txt`/`.md`). Fase 2: app Electron. O
 
 > ⚠️ **Pseudonimizzazione, non anonimizzazione**: l'output resta dato personale (Garante/EDPB).
 
+## 🎯 SCOPO — la stella polare di ogni decisione
+
+**AnonyMCP esiste per UN solo motivo: impedire che dati personali in chiaro finiscano in un
+LLM cloud.** È un filtro tra i documenti dell'avvocato e l'LLM online (Claude, GPT, ecc.).
+
+Cosa è **DENTRO** lo scopo (priorità assoluta):
+- Nessun dato reale (nomi, CF, IBAN, indirizzi…) deve MAI uscire dal server verso l'LLM.
+- Il testo esposto via MCP è sempre pseudonimizzato e approvato da un umano.
+
+Cosa è **FUORI** dallo scopo (NON è compito dell'MCP):
+- Proteggere i documenti dal furto fisico del PC → è compito del sistema operativo (FileVault).
+- Se l'SSD non è cifrato, i dati originali sono già accessibili a prescindere da AnonyMCP.
+- Quindi: **non sovra-ingegnerizzare la sicurezza at-rest** (cache/dizionario/indice locali).
+  La cifratura locale è buona pratica, NON il requisito primario. Il dato originale è già nelle
+  cartelle delle pratiche, che l'utente gestisce: una copia locale in più non cambia il rischio.
+
+**Test mentale per ogni proposta**: «Questa scelta riduce il rischio di leak verso l'LLM cloud?»
+Se la risposta è no, non è una priorità. Se introduce un leak, va respinta a prescindere
+dall'ergonomia.
+
 ## Invarianti di sicurezza — NON negoziabili
 La sicurezza viene prima dell'ergonomia. Ogni modifica va verificata contro queste regole
 (versione estesa + dove sono nel codice: [security-invariants](docs/agent-guides/security-invariants.md)).
 
 1. **Mai loggare su stdout** (è il canale JSON-RPC) → usa `src/util/logger.ts` (stderr).
-2. **Mai PII in chiaro su disco**: mappa reale↔pseudonimo solo in RAM (`SessionManager`); la
-   cache `.anonymcp` contiene solo hash, cifrata AES-256-GCM.
+2. **Mai PII in chiaro nell'OUTPUT verso l'LLM** (il vincolo primario è sul canale MCP, non sul
+   disco locale — vedi §SCOPO): mappa reale↔pseudonimo solo in RAM (`SessionManager`); la cache
+   `.anonymcp` contiene solo hash, cifrata AES-256-GCM. Il dizionario di pratica locale può
+   contenere testo in chiaro (non è mai esposto via MCP).
 3. **Niente tool MCP di de-anonimizzazione/get_mapping**. La reversibilità è un proxy locale,
    fuori dal protocollo.
 4. **Anonimizza PRIMA di chunking/indice/embedding** (gli embedding sono invertibili).
@@ -34,7 +56,34 @@ npm run inspector    # MCP Inspector sul server compilato
 npm start            # avvia (richiede anonymcp.config.json)
 ```
 
+## ⛔ PRIMA DI PROPORRE QUALSIASI FUNZIONALITÀ
+
+**OBBLIGATORIO**: Leggi `ARCHITETTURA.md` (spec. §8-§9) e `docs/adr/INDEX.md`
+prima di suggerire qualsiasi implementazione. Proporre una soluzione che duplica
+una decisione ADR esistente è un errore critico.
+
+**Checklist pre-proposta:**
+1. Cerca keyword nel codebase (`grep -r "search\|index\|crypto\|..."`)
+2. Leggi ARCHITETTURA.md sezione rilevante
+3. Leggi `docs/adr/INDEX.md` per decisioni vincolanti nel dominio
+4. Controlla se esiste già in `avvocati-e-mac/anonimator` (AnonyMCP è una derivazione)
+5. Solo se non trovato → proponi nuova implementazione citando la ricerca eseguita
+
+**Decisioni architetturali vincolanti (non rinegoziabili senza nuovo ADR):**
+- **Ricerca**: BM25 + SQLite FTS5 (ADR-002). NO a Elasticsearch/Qdrant/vettori.
+- **Cifratura a riposo**: AES-256-GCM dove usata (ADR-001) — buona pratica, NON requisito
+  primario (vedi §SCOPO: la protezione at-rest esula dallo scopo dell'MCP).
+- **Dizionario entità di pratica**: può contenere testo originale (come Anonimator), salvato
+  accanto ai documenti della pratica (ADR-003). Non aggiunge rischio rispetto ai file originali
+  già presenti. La cifratura è opzionale, non obbligatoria.
+- **Label/folderId pratiche**: solo numeri opachi (es. "400F"), mai nomi delle parti — QUESTO
+  sì è critico perché il label è esposto all'LLM via `list_folders` (ADR-004).
+
 ## Sviluppo con assistenti CLI + commit atomici
+- **Capisci lo SCOPO prima di modificare.** Prima di riscrivere/semplificare qualcosa,
+  articola esplicitamente *a cosa serve per l'utente* e verifica che la modifica preservi
+  quello scopo. Semplificare non deve mai buttare via la funzione reale. **Se lo scopo non
+  è chiaro, CHIEDI esplicitamente** (AskUserQuestion) invece di assumere.
 - **Plan mode** prima di scrivere; task atomici (5–10 min); review del diff prima del commit.
 - **Commit atomico = una decisione**, reversibile con `git revert`. Test + doc nello **stesso
   commit** del codice. Messaggio che spiega il *perché* + `Co-Authored-By: Claude Opus 4.8
@@ -46,6 +95,7 @@ npm start            # avvia (richiede anonymcp.config.json)
 
 ## Mappa della documentazione (progressive disclosure)
 Apri solo ciò che serve al task:
+- **Decisioni architetturali (ADR)** → [docs/adr/INDEX.md](docs/adr/INDEX.md) ← leggi PRIMA di proporre
 - **Architettura, diagrammi, processo** → [ARCHITETTURA.md](ARCHITETTURA.md)
 - **Invarianti di sicurezza (estese)** → [security-invariants](docs/agent-guides/security-invariants.md)
 - **Threat model (STRIDE)** → [threat-model](docs/agent-guides/threat-model.md)
@@ -61,11 +111,14 @@ src/
   config.ts     load/validate (Zod)     types.ts    tipi condivisi
   engine/       pseudonimizzazione (regex, sessionManager, anonymizer, legalStopWords)
   pipeline/     toMarkdown, metadataStripper, riskScorer, documentService
-  practice/     practiceStore (cache cifrata), practiceRegistry (stato/quarantena)
+  practice/     practiceStore (cache cifrata), practiceRegistry (stato/review), entityDictionary
+  search/       chunkIndex (BM25 su SQLite FTS5)
+  tui/          review TUI Ink (Fase 1): entityColors, highlight, reviewApp
   util/         logger (stderr), crypto (AES-GCM/HMAC), pathGuard
 test/           vitest (unit + anti-leak + e2e + redteam)
+docs/adr/       Architecture Decision Records (decisioni vincolanti)
 docs/agent-guides/  guide di dettaglio (Tier-3)
 ```
 
-> Stato: Fase 1 implementata (94 test verdi). **Non** ancora deployabile in produzione legale:
+> Stato: Fase 1 implementata (141 test verdi). **Non** ancora deployabile in produzione legale:
 > vedi checklist Go/No-Go nel piano e i gap in [threat-model](docs/agent-guides/threat-model.md).

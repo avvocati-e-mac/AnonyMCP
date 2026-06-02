@@ -9,6 +9,10 @@ anonymcp.config.json
 .anonymcp-index/
 *.sqlite
 *.sqlite-journal
+*.entitydict.json
+*.approvals.json
+*.searchindex.db
+*.searchindex.db-*
 
 # OS
 .DS_Store

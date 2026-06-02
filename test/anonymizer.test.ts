@@ -59,6 +59,18 @@ describe('detectEntities + applyPseudonyms', () => {
     expect(out).not.toMatch(/\bRossi\b/)
   })
 
+  it('pseudonimizza un nome spezzato da a-capo (word-wrap dei documenti legali)', () => {
+    // "Mario Rossi" rilevato come entità, ma nel testo è spezzato su due righe.
+    const text = 'Si condanna la Sig.ra Mario\nRossi al pagamento.'
+    const entities = [
+      { type: 'PERSONA' as const, originalText: 'Mario Rossi', pseudonym: 'M. R.', occurrences: 1, source: 'regex' as const }
+    ]
+    const out = applyPseudonyms(text, entities)
+    expect(out).toContain('M. R.')
+    expect(out).not.toContain('Mario')
+    expect(out).not.toMatch(/\bRossi\b/)
+  })
+
   it('NER iniettabile: applica veto filter alle entità ner', async () => {
     const ner = () => [
       { type: 'PERSONA' as const, text: 'ricorrente', source: 'ner' as const },

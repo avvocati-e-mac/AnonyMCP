@@ -1,0 +1,96 @@
+name: Release
+
+# Pubblica una GitHub Release quando viene creato un tag v* (es. v0.1.0).
+#
+# ── PLACEHOLDER FASE 1 ──────────────────────────────────────────────
+# AnonyMCP Fase 1 è un server MCP stdio (Node), non un'app Electron:
+# qui produciamo un tarball npm pack (codice + dist/), non installer GUI.
+# Quando arriverà l'app Electron (Fase 2), estendere a una matrice
+# macOS-intel/arm + Windows + Linux che produce .dmg/.exe/.AppImage,
+# sul modello di avvocati-e-mac/anonimator (.github/workflows/release.yml).
+# ────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build + test + pacchetto
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck + test
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Pacchettizza (npm pack)
+        run: npm pack --pack-destination artifacts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: npm-tarball
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: GitHub Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: npm-tarball
+          path: artifacts/
+
+      - name: Estrai le note dal CHANGELOG
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Crea la GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "AnonyMCP ${{ github.ref_name }}"
+          body: |
+            ## Installazione (Fase 1 — server MCP)
+
+            AnonyMCP è un **server MCP stdio** per Node ≥ 20, non un'app cliccabile.
+            Si installa dal sorgente e si collega a un client MCP (es. Claude Desktop).
+            Istruzioni passo-passo nel [README](https://github.com/avvocati-e-mac/AnonyMCP#installazione-passo-passo-fase-1).
+
+            Il file `.tgz` allegato è il pacchetto npm, per chi preferisce
+            `npm install <file>.tgz` invece del clone del repository.
+
+            ---
+
+            ${{ steps.changelog.outputs.notes }}
+          files: |
+            artifacts/*.tgz
+          draft: false
+          prerelease: true

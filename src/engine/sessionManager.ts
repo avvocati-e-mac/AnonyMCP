@@ -8,7 +8,7 @@
 //    NON contiene il testo reale.
 // ============================================================
 
-import type { DetectedEntity, EntityType } from '../types.js'
+import type { DetectedEntity, EntityDictionary, EntityType } from '../types.js'
 import { sha256 } from '../util/crypto.js'
 
 /** Prefissi leggibili per entità strutturate (pseudonimi numerici). */
@@ -131,6 +131,35 @@ export class SessionManager {
     this.byHash.set(origHash, { pseudonym, type })
   }
 
+  /**
+   * Precarica tutte le entità da un dizionario di pratica (testo in chiaro,
+   * formato Anonimator). Ogni voce diventa una coppia originale→pseudonimo nota,
+   * così la prossima scansione riusa gli stessi pseudonimi senza ri-NER. Vedi ADR-0003.
+   * Ritorna il numero di entità importate.
+   */
+  importFromDictionary(dict: EntityDictionary): number {
+    for (const entry of dict.entries) {
+      this.preload(entry.original, entry.pseudonym, entry.type)
+      // Allinea il contatore se il pseudonimo è del tipo PREFIX_NNN, per evitare
+      // collisioni con pseudonimi generati dopo l'import.
+      this.bumpCounterFromPseudonym(entry.type, entry.pseudonym)
+    }
+    return dict.entries.length
+  }
+
+  /**
+   * Se il pseudonimo ha forma `PREFIX_NNN`, assicura che il contatore del tipo
+   * sia almeno NNN, così i nuovi pseudonimi non riusano un numero già assegnato.
+   */
+  private bumpCounterFromPseudonym(type: EntityType, pseudonym: string): void {
+    const m = /_(\d+)$/.exec(pseudonym)
+    if (!m) return
+    const n = Number.parseInt(m[1]!, 10)
+    if (Number.isNaN(n)) return
+    const current = this.counters.get(type) ?? 0
+    if (n > current) this.counters.set(type, n)
+  }
+
   /** Arricchisce entità rilevate con pseudonimi coerenti. */
   enrichEntities(entities: DetectedEntity[]): DetectedEntity[] {
     return entities.map((entity) => ({
@@ -142,6 +171,21 @@ export class SessionManager {
   /** True se il testo originale è già noto. */
   has(originalText: string): boolean {
     return this.dictionary.has(originalText.trim().toLowerCase())
+  }
+
+  /**
+   * Tutti i termini noti alla sessione (testo, pseudonimo, tipo). Serve a CERCARLI
+   * nel testo di ogni documento: una parte nota alla pratica non deve mai trapelare
+   * anche se il NER non la rileva in quel documento (vedi enrichFromKnownTerms).
+   * Il testo è normalizzato a minuscolo (la chiave del dizionario); il match è
+   * comunque case-insensitive.
+   */
+  getKnownTerms(): { original: string; pseudonym: string; type: EntityType }[] {
+    return [...this.dictionary.entries()].map(([original, v]) => ({
+      original,
+      pseudonym: v.pseudonym,
+      type: v.type
+    }))
   }
 
   /** Statistiche del dizionario (senza esporre i valori reali). */
