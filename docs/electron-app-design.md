@@ -262,61 +262,146 @@ Override manuale:
 - se l'utente tenta di forzare un label MCP identificante, la UI blocca o impone
   conferma forte, ma il default resta codice opaco.
 
-## 7. Dashboard generale
+## 7. Dashboard generale e coerenza MCP
 
-Dopo onboarding e setup, questa e' la schermata iniziale.
+Dopo onboarding e setup, questa e' la schermata iniziale. La dashboard non deve essere una
+pagina di liste lunghe: deve essere un cruscotto operativo compatto, con righe azionabili.
+
+### 7.1 Stato MCP/config
+
+Problema emerso nel test manuale: la UI Electron puo' leggere una configurazione diversa da
+quella del server MCP gia' collegato al client LLM. Questo e' un rischio di sicurezza, perche'
+l'avvocato puo' credere di governare le pratiche esposte al cloud mentre il client LLM vede
+altro.
+
+Requisiti:
+
+- mostrare sempre il path della config usata dalla UI, in forma compatta;
+- mostrare hash breve della config e lista `folderId` opachi configurati;
+- mostrare un avviso se il client MCP esterno non e' stato verificato dopo una modifica config;
+- aggiungere una procedura "Verifica collegamento MCP" che confronta, quando possibile,
+  `folderId`/`configHash` della UI con quelli del server MCP;
+- non mostrare path reali o alias locali nel canale MCP; path e nomi reali restano solo UI locale.
+
+Target futuro lato server MCP: un tool/status non sensibile, per esempio
+`anonymcp_get_runtime_status`, che restituisce solo:
+
+- versione;
+- `configHash`;
+- `folderIds`;
+- `allowCloudForSensitive`;
+- `requireManualApproval`.
 
 ```text
-+------------------------------------------------------------------+
-| AnonyMCP                                      [Impostazioni] [Log]|
-+-----------------------------+------------------------------------+
-| Attivita' da svolgere       | Stato generale                     |
-|                             |                                    |
-| [!] 12 documenti da scan    | Pratiche configurate: 48           |
-| [!] 8 documenti da review   | Documenti approvati: 132           |
-| [!] 2 bozze LLM in attesa   | Disponibili al LLM cloud: 118      |
-| [S] 5 da valutare/sensibili | Bloccati per cloud: 14             |
-| [+] 3 nuove cartelle        |                                    |
-|                             | [Scansiona tutto]                  |
-|                             | [Vai alla review]                  |
-|                             | [Bozze da confermare]              |
-|                             | [Documenti sensibili]              |
-|                             | [Aggiungi pratiche]                |
-+-----------------------------+------------------------------------+
++--------------------------------------------------------------------------------+
+| Dashboard generale                                      MCP configurato [OK]    |
+| Config UI: anonymcp.config.json  Hash: 91ab42  Folders: 1, 100F                |
+| Ultima verifica client MCP: non eseguita dopo modifica config [Verifica MCP]    |
++--------------------------------------------------------------------------------+
 ```
 
-La dashboard e' orientata ad azioni, non a metriche decorative. Deve rispondere subito a:
+Se la verifica fallisce:
 
-- posso chiedere al LLM di lavorare su questa pratica?
-- quali documenti bloccano l'uso cloud?
-- quali bozze LLM devo confermare?
-- ci sono nuove cartelle da importare?
-- esistono label MCP non opache?
+```text
++--------------------------------------------------------------------------------+
+| ATTENZIONE: il client LLM non vede le stesse pratiche mostrate dalla UI.         |
+| UI: 1, 100F                         MCP: 400f, 215s                             |
+| Finche' non correggi il collegamento, l'app non puo' garantire cosa vede l'LLM. |
+| [Apri istruzioni collegamento] [Ho riavviato il client LLM, verifica di nuovo]  |
++--------------------------------------------------------------------------------+
+```
+
+### 7.2 Dashboard compatta
+
+La dashboard deve rispondere subito a:
+
+- quali pratiche sono configurate;
+- quali documenti richiedono lavoro;
+- quali documenti sono bloccati per il cloud;
+- quali bozze LLM attendono conferma;
+- quali azioni posso fare ora.
+
+Le metriche alte restano, ma sotto deve esserci una tabella compatta con filtri. Le liste
+verticali separate sono accettabili solo per pochi elementi; con molte cartelle/documenti
+occupano troppo spazio e nascondono il lavoro.
+
+```text
++--------------------------------------------------------------------------------+
+| Pratiche 2 | Da review 13 | Sensibili/bloccati 4 | Bozze LLM 0                 |
++--------------------------------------------------------------------------------+
+| [Tutti] [Da review] [Sensibili] [Bozze] [Approvati]        Cerca [__________]  |
++--------------------------------------------------------------------------------+
+| Pratica | Documento              | Review       | Sensibilita'       | Azione  |
+| 1       | contratto_clean.txt     | Approvato    | Non sensibile      | Apri    |
+| 1       | perizia_clean.txt       | Da review    | Suggerito salute   | Valuta  |
+| 100F    | contratto_affitto.md    | Da review    | Suggerito penale   | Valuta  |
+| 100F    | atto_citazione_test.md  | Da review    | Non sensibile      | Apri    |
++--------------------------------------------------------------------------------+
+| 1-20 di 87 documenti                                             [<] [>]       |
++--------------------------------------------------------------------------------+
+```
+
+Regole UI:
+
+- ogni riga deve avere un solo comando primario vicino allo stato: `Apri`, `Valuta`,
+  `Conferma bozza`;
+- i documenti sensibili non devono stare solo in una seconda lista: devono emergere anche nel
+  filtro `Sensibili`;
+- mostrare massimo 20-30 righe per pagina o usare virtualizzazione;
+- la tabella non deve mostrare path completi per default: mostra pratica/label opaca e nome
+  file; il path reale puo' comparire in tooltip/detail locale;
+- i contatori devono essere coerenti con le righe: se la lista mostra quattro bloccati, il KPI
+  non puo' essere zero.
 
 ## 8. Review documenti
 
-La review e' locale. Puo' mostrare testo originale e nomi file reali, ma questi valori non
-devono uscire via MCP.
+La review e' una schermata locale dedicata, non un pannello dentro la dashboard. Puo' mostrare
+testo originale e nomi file reali, ma questi valori non devono uscire via MCP.
 
 ```text
-+------------------------------------------------------------------+
-| Review / citazione.md                    [Originale] [Pseudonimo]|
-+-------------------------------------+----------------------------+
-| DOCUMENTO                           | ENTITA' RILEVATE           |
-|                                     |                            |
-| Il Sig. [Mario Rossi] nato a        | [x] Persona                |
-| [Milano], CF [RSSMRA...]            |     Mario Rossi -> Persona 1|
-| residente in [Via Roma 10] ...      |                            |
-|                                     | [x] Luogo                  |
-|                                     |     Milano -> Luogo 1       |
-|                                     |                            |
-|                                     | [x] Cod. fiscale           |
-|                                     |     RSSMRA... -> CF 1       |
-|                                     |                            |
-|                                     | [+ Aggiungi entita' mancata]|
-+-------------------------------------+----------------------------+
-| [Annulla]                         [Applica selezione e approva] |
-+------------------------------------------------------------------+
++--------------------------------------------------------------------------------+
+| < Dashboard | Review documento                                  contratto.md   |
+| Pratica 1 | Da review | Non sensibile | Cloud: non disponibile finche' approvi  |
++--------------------------------------------------------------------------------+
+| Originale locale                         | Pseudonimizzato                      |
+|------------------------------------------+--------------------------------------|
+| LOCATORE                                 | LOCATORE                             |
+| [PERSONA Giovanni Bianchi Esposito]      | [PERSONA L. G. B. E.]                |
+| nato a [LUOGO Napoli] ...                | nato a [LUOGO NASCLUGO_001] ...      |
+| CF [CF BNCGNN...]                        | CF [CF CF_001]                       |
+| IBAN [IBAN IT89...]                      | IBAN [IBAN IBAN_001]                 |
++--------------------------------------------------------------------------------+
+| Entita' 62  [Tutte] [Persone] [Codici] [Contatti] [Banche] [Altro] Cerca [...] |
+| [x] CF     BNCGNN...              -> CF_001       regex 1 occ.                 |
+| [x] IBAN   IT89...                -> IBAN_001     regex 1 occ.                 |
+| [x] Email  g.bianchi@example...   -> EMAIL_001    regex 1 occ.                 |
+|                                                                                |
+| + Aggiungi entita' mancante                                                     |
+|   Testo esatto [____________________] Tipo [PERSONA v] [Aggiungi]              |
++--------------------------------------------------------------------------------+
+| Sensibilita': [Non sensibile] [Sensibile/blocca cloud] [Usa suggerimento]       |
+|                                              [Annulla] [Applica e approva]      |
++--------------------------------------------------------------------------------+
+```
+
+Requisiti visuali ispirati ad Anonimator:
+
+- evidenziare le entita' nel testo originale e pseudonimizzato con colori per tipo;
+- usare lo stesso colore nella lista entita', nel testo e nella legenda;
+- click su entita' nella lista = evidenzia/scorre alla prima occorrenza;
+- click nel testo = seleziona la riga entita' corrispondente;
+- scroll sincronizzato tra originale e pseudonimizzato. Sync preferito: per blocchi/paragrafi
+  normalizzati; fallback: percentuale di scroll;
+- pannelli testo con altezza stabile e font monospace leggibile;
+- pannello entita' ampio, filtrabile e raggruppabile, non una lista di poche righe;
+- `Aggiungi entita'` graficamente separato dal riepilogo sensibilita';
+- footer azioni sticky per evitare che l'utente perda il comando finale.
+
+Palette entita':
+
+```text
+PERSONA=#2563eb  ORGANIZZAZIONE=#7c3aed  LUOGO=#16a34a  CF/PIVA=#dc2626
+IBAN=#0891b2     EMAIL/PEC/TEL=#ea580c   INDIRIZZO=#4f46e5  ALTRO=#64748b
 ```
 
 Checklist guidata:
@@ -328,27 +413,6 @@ Checklist guidata:
 - Email / PEC / telefoni;
 - Numeri di ruolo, protocolli, riferimenti ad atti;
 - altri dati identificativi non riconosciuti.
-
-```text
-+------------------------------------------------------------------+
-| Aggiungi entita' mancata                                         |
-+------------------------------------------------------------------+
-| Testo da proteggere                                              |
-| [ Studio Medico San Luca                                      ]  |
-|                                                                  |
-| Tipo                                                             |
-| ( ) Persona                                                      |
-| (x) Organizzazione                                               |
-| ( ) Luogo                                                        |
-| ( ) Indirizzo                                                    |
-| ( ) Altro dato identificativo                                    |
-|                                                                  |
-| AnonyMCP cerchera' questo testo nel documento e lo sostituira'   |
-| con uno pseudonimo coerente.                                     |
-|                                                                  |
-|                              [Annulla] [Aggiungi]                |
-+------------------------------------------------------------------+
-```
 
 ## 9. Documenti sensibili
 
@@ -376,6 +440,7 @@ Stati:
 - `Suggerito sensibile`;
 - `Sensibile deciso dall'avvocato`;
 - `Non sensibile deciso dall'avvocato`;
+- `Sensibile autorizzato al cloud dall'avvocato`;
 - `Da rivalutare`;
 - `Bloccato per cloud`;
 - `Disponibile al cloud dopo review`.
@@ -395,13 +460,18 @@ Stati:
 |                                                                  |
 | Come vuoi classificare questo documento?                         |
 |                                                                  |
-| (x) Sensibile                                                    |
+| (x) Sensibile - blocca cloud                                     |
 |     Il documento resta approvabile localmente, ma non viene       |
 |     esposto al LLM cloud.                                        |
 |                                                                  |
 | ( ) Non sensibile                                                |
 |     Dopo la review potra' essere esposto al LLM cloud in forma    |
 |     pseudonimizzata.                                             |
+|                                                                  |
+| ( ) Sensibile ma autorizzo uso cloud                             |
+|     Scelta eccezionale: il documento resta sensibile, ma puo'     |
+|     essere esposto al LLM solo in forma pseudonimizzata e dopo    |
+|     conferma forte dell'avvocato.                                |
 |                                                                  |
 | ( ) Da rivalutare piu' tardi                                     |
 |     Il documento resta bloccato finche' non decidi.               |
@@ -421,8 +491,23 @@ Regole operative:
   non viene esposto al cloud;
 - se l'avvocato classifica `Non sensibile`, il documento puo' diventare esponibile solo
   dopo normale review di pseudonimizzazione;
+- se l'avvocato classifica `Sensibile ma autorizzato al cloud`, il documento puo' diventare
+  esponibile solo dopo conferma forte, nota locale obbligatoria e review completata;
 - se l'avvocato lascia `Da rivalutare`, nessuna esposizione cloud;
 - ogni decisione e' legata all'hash del documento; se il file cambia, la decisione decade.
+
+Esempio concreto emerso nel test: una perizia medico-legale puo' essere indispensabile per una
+causa di risarcimento danni o colpa medica. AnonyMCP deve segnalarla come possibile dato
+sensibile, ma non puo' decidere da solo che sia inutilizzabile. L'avvocato deve poter scegliere:
+
+- bloccare il documento per il cloud;
+- considerarlo non sensibile nel contesto concreto;
+- autorizzarne l'uso cloud pur riconoscendone la sensibilita', con conferma forte.
+
+Questa terza opzione modifica la policy attuale "dati art. 9/10 mai a LLM cloud" e richiede
+un ADR dedicato prima dell'implementazione piena nel canale MCP. Fino al nuovo ADR, la UI puo'
+registrare la decisione locale ma il server MCP deve continuare a rispettare
+`allowCloudForSensitive=false`.
 
 Implementazione locale prevista/avviata:
 
@@ -457,11 +542,26 @@ Implementazione locale prevista/avviata:
 Ogni cambio di valutazione deve:
 
 - rimuovere prima il documento dall'indice BM25;
-- reindicizzare solo se la decisione finale consente esposizione cloud e il documento e'
-  approvato;
+- reindicizzare solo se la decisione finale consente esposizione cloud, la policy server lo
+  permette e il documento e' approvato;
 - restare locale e non esporre via MCP nomi file, motivazioni o path reali;
 - produrre un record audit locale con hash sorgente, azione, stato prima/dopo, timestamp e
   motivazione eventuale.
+
+Red team della soluzione:
+
+- rischio: sblocco sensibili troppo facile. Mitigazione: default bloccato, conferma forte,
+  nota obbligatoria per `Sensibile ma autorizzato cloud`, audit locale, niente bulk unlock;
+- rischio: falsa sicurezza da highlight colorato. Mitigazione: copy esplicito che il sistema
+  non riconosce tutto, checklist manuale, comando `Aggiungi entita'` sempre visibile;
+- rischio: config drift tra UI e MCP. Mitigazione: `configHash`, verifica runtime MCP,
+  avviso bloccante se UI e client LLM divergono;
+- rischio: la dashboard compatta nasconde urgenze. Mitigazione: filtri, badge distinti,
+  KPI coerenti e riga azionabile unica;
+- rischio: path reali visibili per abitudine. Mitigazione: path completi solo in dettaglio
+  locale/tooltip, mai in liste MCP-facing o ritorni IPC non necessari;
+- rischio: scroll sincronizzato impreciso. Mitigazione: sync per blocchi quando possibile,
+  fallback percentuale, nessuna decisione automatica basata sul sync visuale.
 
 Italian-Legal-BERT:
 
