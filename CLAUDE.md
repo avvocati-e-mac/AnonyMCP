@@ -78,6 +78,10 @@ una decisione ADR esistente è un errore critico.
   già presenti. La cifratura è opzionale, non obbligatoria.
 - **Label/folderId pratiche**: solo numeri opachi (es. "400F"), mai nomi delle parti — QUESTO
   sì è critico perché il label è esposto all'LLM via `list_folders` (ADR-004).
+- **Scrittura LLM→cartella (M-Write)**: l'LLM non tocca il disco; l'MCP salva le bozze
+  **re-idratate** (pseudonimo→reale) con un passaggio LOCALE, mai un tool di de-anon; pathGuard
+  + quarantena/staging; return senza PII; co-reference risolta via id-entità interno, ambiguità
+  fail-safe (ADR-005). Solo formati testuali (binari = milestone futura).
 
 ## Sviluppo con assistenti CLI + commit atomici
 - **Capisci lo SCOPO prima di modificare.** Prima di riscrivere/semplificare qualcosa,

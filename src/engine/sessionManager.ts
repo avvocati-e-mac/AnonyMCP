@@ -28,9 +28,46 @@ const STRUCTURED_PREFIX: Partial<Record<EntityType, string>> = {
   PROTOCOLLO: 'PROT'
 }
 
+/**
+ * Esito di una ri-idratazione (pseudonimo→reale). Uso LOCALE lato server,
+ * mai esposto via MCP. Vedi ADR-0005.
+ */
+export interface RehydrationResult {
+  /** Testo con i pseudonimi noti sostituiti dai valori reali. */
+  text: string
+  /** Numero di pseudonimi distinti effettivamente sostituiti. */
+  substituted: number
+  /** Pseudonimi NON sostituiti perché ambigui (mappano a >1 originale). */
+  ambiguous: string[]
+}
+
 interface SessionEntry {
   pseudonym: string
   type: EntityType
+  /**
+   * Forma originale con le maiuscole reali (la chiave del dizionario è lowercase).
+   * Serve alla re-idratazione (pseudonimo→reale) per ripristinare il case corretto.
+   * Vedi ADR-0005. Uso LOCALE: mai esposta via MCP.
+   */
+  displayOriginal: string
+  /**
+   * Id interno dell'ENTITÀ (non del mention). Le occorrenze co-referenziate della
+   * stessa persona ("Mario Rossi" e il successivo "Rossi") condividono lo stesso
+   * entityId. Permette alla re-idratazione di distinguere la co-reference (stessa
+   * entità, da collassare) dall'omonimia di iniziali (entità diverse). RAM-only,
+   * mai serializzato nello pseudonimo né esposto via MCP. Vedi ADR-0005.
+   */
+  entityId?: string
+  /**
+   * Forma canonica dell'entità (longest mention del gruppo, es. "Mario Rossi" per
+   * il cluster {"Mario Rossi", "Rossi"}). È il valore con cui si ri-idrata. RAM-only.
+   */
+  canonical?: string
+}
+
+/** Esegue l'escape dei metacaratteri regex in una stringa letterale. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /**
@@ -63,6 +100,8 @@ export class SessionManager {
   private dictionary = new Map<string, SessionEntry>()
   /** Contatori fallback per tipo. */
   private counters = new Map<EntityType, number>()
+  /** Contatore degli id-entità interni (RAM-only, mai esposto). Vedi ADR-0005. */
+  private entityCounter = 0
   /**
    * Mappa: sha256(originale normalizzato) → pseudonimo, precaricata dalla cache
    * cifrata della pratica. Permette di riusare lo stesso pseudonimo tra sessioni
@@ -77,14 +116,19 @@ export class SessionManager {
 
   /** Restituisce (o crea) il pseudonimo per un testo originale. */
   getOrCreatePseudonym(originalText: string, type: EntityType): string {
-    const key = originalText.trim().toLowerCase()
+    const display = originalText.trim()
+    const key = display.toLowerCase()
     const existing = this.dictionary.get(key)
     if (existing) return existing.pseudonym
 
     // Coerenza cross-sessione: se l'hash è nella cache precaricata, riusa il pseudonimo.
     const fromCache = this.byHash.get(SessionManager.hashKey(originalText))
     if (fromCache) {
-      this.dictionary.set(key, { pseudonym: fromCache.pseudonym, type: fromCache.type })
+      this.dictionary.set(key, {
+        pseudonym: fromCache.pseudonym,
+        type: fromCache.type,
+        displayOriginal: display
+      })
       return fromCache.pseudonym
     }
 
@@ -110,8 +154,22 @@ export class SessionManager {
       }
     }
 
-    this.dictionary.set(key, { pseudonym, type })
+    // Le PERSONA ricevono un id-entità interno (co-reference): le occorrenze legate
+    // a questo nome erediteranno lo stesso entityId via linkCoreference. Il canonical
+    // iniziale è la mention stessa (potrà essere allungato da un mention più completo).
+    const entry: SessionEntry = { pseudonym, type, displayOriginal: display }
+    if (type === 'PERSONA') {
+      entry.entityId = this.newEntityId()
+      entry.canonical = display
+    }
+    this.dictionary.set(key, entry)
     return pseudonym
+  }
+
+  /** Genera un nuovo id-entità interno (RAM-only). */
+  private newEntityId(): string {
+    this.entityCounter += 1
+    return `ENT_${this.entityCounter}`
   }
 
   /**
@@ -119,7 +177,42 @@ export class SessionManager {
    * pratica già approvata). Mantiene la coerenza tra sessioni senza ri-NER.
    */
   preload(originalText: string, pseudonym: string, type: EntityType): void {
-    this.dictionary.set(originalText.trim().toLowerCase(), { pseudonym, type })
+    const display = originalText.trim()
+    this.dictionary.set(display.toLowerCase(), { pseudonym, type, displayOriginal: display })
+  }
+
+  /**
+   * Registra `mention` (es. "Rossi") come co-reference di `canonicalText`
+   * (es. "Mario Rossi"): eredita lo stesso pseudonimo e lo stesso entityId del
+   * canonical, così la re-idratazione le tratta come la STESSA entità (le collassa)
+   * e usa la forma canonica più completa. Vedi ADR-0005. Ritorna il pseudonimo.
+   * Se il canonical non è ancora noto, lo crea.
+   */
+  linkCoreference(mention: string, canonicalText: string, type: EntityType): string {
+    const canonKey = canonicalText.trim().toLowerCase()
+    // Assicura che il canonical esista e abbia un entityId (lo crea se serve).
+    const pseudonym = this.getOrCreatePseudonym(canonicalText, type)
+    const canonEntry = this.dictionary.get(canonKey)!
+    const entityId = canonEntry.entityId
+    // La forma canonica del gruppo è la mention più lunga (longest-mention).
+    const canonical =
+      canonEntry.canonical && canonEntry.canonical.length >= canonicalText.trim().length
+        ? canonEntry.canonical
+        : canonicalText.trim()
+    canonEntry.canonical = canonical
+
+    const mentionDisplay = mention.trim()
+    const mentionKey = mentionDisplay.toLowerCase()
+    if (!this.dictionary.has(mentionKey)) {
+      this.dictionary.set(mentionKey, {
+        pseudonym,
+        type,
+        displayOriginal: mentionDisplay,
+        entityId,
+        canonical
+      })
+    }
+    return pseudonym
   }
 
   /**
@@ -138,8 +231,25 @@ export class SessionManager {
    * Ritorna il numero di entità importate.
    */
   importFromDictionary(dict: EntityDictionary): number {
+    // Mappa canonical(lowercase) → entityId, per ricostruire i cluster co-reference:
+    // tutte le voci che condividono lo stesso canonical sono la stessa entità.
+    const entityIdByCanonical = new Map<string, string>()
     for (const entry of dict.entries) {
       this.preload(entry.original, entry.pseudonym, entry.type)
+      // Ripristina l'identità entità se il dizionario porta un canonical (ADR-0005).
+      if (entry.canonical && entry.type === 'PERSONA') {
+        const canonKey = entry.canonical.trim().toLowerCase()
+        let eid = entityIdByCanonical.get(canonKey)
+        if (!eid) {
+          eid = this.newEntityId()
+          entityIdByCanonical.set(canonKey, eid)
+        }
+        const stored = this.dictionary.get(entry.original.trim().toLowerCase())
+        if (stored) {
+          stored.entityId = eid
+          stored.canonical = entry.canonical
+        }
+      }
       // Allinea il contatore se il pseudonimo è del tipo PREFIX_NNN, per evitare
       // collisioni con pseudonimi generati dopo l'import.
       this.bumpCounterFromPseudonym(entry.type, entry.pseudonym)
@@ -173,6 +283,11 @@ export class SessionManager {
     return this.dictionary.has(originalText.trim().toLowerCase())
   }
 
+  /** Forma canonica nota per un originale (se l'entità ha un cluster co-reference). RAM-only. */
+  getCanonical(originalText: string): string | undefined {
+    return this.dictionary.get(originalText.trim().toLowerCase())?.canonical
+  }
+
   /**
    * Tutti i termini noti alla sessione (testo, pseudonimo, tipo). Serve a CERCARLI
    * nel testo di ogni documento: una parte nota alla pratica non deve mai trapelare
@@ -195,6 +310,93 @@ export class SessionManager {
       byType[type] = (byType[type] ?? 0) + 1
     }
     return { totalEntries: this.dictionary.size, byType }
+  }
+
+  /**
+   * Costruisce on-demand la mappa inversa pseudonimo→valore-reale dalla `dictionary`.
+   *
+   * Criterio di unicità (entityId-aware, vedi ADR-0005):
+   *  - se le entry di uno pseudonimo hanno un `entityId`, l'unicità è sul numero di
+   *    entityId DISTINTI: 1 solo entityId = stessa entità (co-reference) → unico, e si
+   *    ri-idrata con la forma CANONICA (longest mention). >1 entityId = entità diverse
+   *    con stesse iniziali (omonimia) → AMBIGUO.
+   *  - per le entry senza entityId (strutturate: CF/IBAN; o caricate via preload),
+   *    fallback al criterio sul `displayOriginal` distinto.
+   * Gli pseudonimi ambigui NON vengono sostituiti (fail-safe: meglio lo pseudonimo che
+   * un nome sbagliato su un atto). Uso LOCALE, mai esposto via MCP.
+   */
+  private buildInverseMap(): { unique: Map<string, string>; ambiguous: Set<string> } {
+    // Per ogni pseudonimo raccoglie: entityId distinti, valori-reali candidati.
+    const byPseudonym = new Map<
+      string,
+      { entityIds: Set<string>; values: Set<string>; canonical?: string }
+    >()
+    for (const entry of this.dictionary.values()) {
+      const agg = byPseudonym.get(entry.pseudonym) ?? {
+        entityIds: new Set<string>(),
+        values: new Set<string>()
+      }
+      if (entry.entityId) {
+        agg.entityIds.add(entry.entityId)
+        // Il valore di ri-idratazione preferito è la forma canonica del gruppo.
+        if (entry.canonical) agg.canonical = entry.canonical
+      }
+      agg.values.add(entry.displayOriginal)
+      byPseudonym.set(entry.pseudonym, agg)
+    }
+
+    const unique = new Map<string, string>()
+    const ambiguous = new Set<string>()
+    for (const [pseudonym, agg] of byPseudonym) {
+      if (agg.entityIds.size > 0) {
+        // Entry con identità: una sola entità → unico (usa il canonical).
+        if (agg.entityIds.size === 1) {
+          unique.set(pseudonym, agg.canonical ?? [...agg.values][0]!)
+        } else {
+          ambiguous.add(pseudonym)
+        }
+      } else if (agg.values.size === 1) {
+        unique.set(pseudonym, [...agg.values][0]!)
+      } else {
+        ambiguous.add(pseudonym)
+      }
+    }
+    return { unique, ambiguous }
+  }
+
+  /**
+   * Re-idrata un testo: sostituisce gli pseudonimi noti con i valori reali.
+   * Passaggio LOCALE lato server (es. prima di salvare una bozza dell'LLM su disco):
+   * NON è un tool MCP di de-anonimizzazione e il risultato non va mai esposto via MCP.
+   * Vedi ADR-0005.
+   *
+   * - Sostituisce gli pseudonimi più lunghi prima (es. "M. R. (2)" prima di "M. R.")
+   *   per non corrompere i prefissi condivisi.
+   * - I pseudonimi ambigui (→ più originali) NON vengono sostituiti e finiscono in `ambiguous`.
+   */
+  rehydrate(text: string): RehydrationResult {
+    const { unique, ambiguous } = this.buildInverseMap()
+    const pseudonyms = [...unique.keys()].sort((a, b) => b.length - a.length)
+
+    let result = text
+    let substituted = 0
+    for (const pseudonym of pseudonyms) {
+      const pattern = new RegExp(
+        `(?<![\\p{L}\\p{N}_])${escapeRegExp(pseudonym)}(?![\\p{L}\\p{N}_])`,
+        'gu'
+      )
+      let hit = false
+      result = result.replace(pattern, () => {
+        hit = true
+        return unique.get(pseudonym)!
+      })
+      if (hit) substituted++
+    }
+
+    const usedAmbiguous = [...ambiguous].filter((p) =>
+      new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(p)}(?![\\p{L}\\p{N}_])`, 'u').test(text)
+    )
+    return { text: result, substituted, ambiguous: usedAmbiguous }
   }
 
   /** Cancella e azzera la memoria (zeroization su chiusura sessione). */

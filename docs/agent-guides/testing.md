@@ -21,9 +21,11 @@ npx vitest run test/<file>.test.ts   # un singolo file
 - **Unit**: ogni funzione esportata (regex, sessionManager, anonymizer, crypto, pathGuard,
   riskScorer, practiceStore).
 - **E2E MCP** (`test/server.e2e.test.ts`): client ↔ server via `InMemoryTransport`; verifica
-  i 4 tool, l'assenza dei tool de-anon, e che `resources/read` ritorni solo pseudonimi.
+  i tool esposti (6: i 4 di lettura + `write_document`/`create_folder`), l'assenza dei tool
+  de-anon, e che `resources/read` ritorni solo pseudonimi.
 - **Anti-leak** (`test/fixtures.antileak.test.ts`): vedi sotto.
-- **Red-team** (`test/redteam.*.test.ts`): docId, sanitizer (fuzzing), search guard.
+- **Red-team** (`test/redteam.*.test.ts`): docId, sanitizer (fuzzing), search guard, e M-Write
+  (`redteam.write.test.ts`: traversal bloccato, return senza PII, staging, re-idratazione).
 - **Coerenza cache** (`test/cacheCoherence.test.ts`): pseudonimi stabili tra sessioni.
 
 ## Il test più importante: anti-leak

@@ -16,6 +16,7 @@ la direzione, si crea un nuovo ADR che fa `supersedes` del precedente.
 | [0002](0002-search-bm25.md) | Ricerca full-text con BM25 + SQLite FTS5 | search | accepted | sì |
 | [0003](0003-dictionary-plaintext.md) | Dizionario di pratica in testo chiaro (formato Anonimator) | storage | accepted | sì |
 | [0004](0004-practice-label-opaque.md) | Label/folderId pratica = numero opaco, mai nomi delle parti | security | accepted | sì |
+| [0005](0005-mcp-write-rehydration.md) | Scrittura MCP con re-idratazione locale e quarantena | security | accepted | sì |
 
 ## Come si legge un ADR
 

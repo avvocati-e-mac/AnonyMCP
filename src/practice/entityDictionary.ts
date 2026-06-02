@@ -25,14 +25,28 @@ export function dictionaryPath(folderPath: string): string {
  * Costruisce un EntityDictionary dalle entità rilevate, deduplicando per
  * (testo originale normalizzato + tipo). Mantiene il testo in chiaro.
  */
-export function buildDictionary(practiceId: string, entities: DetectedEntity[]): EntityDictionary {
+export function buildDictionary(
+  practiceId: string,
+  entities: DetectedEntity[],
+  canonicalOf?: (original: string) => string | undefined
+): EntityDictionary {
   const seen = new Set<string>()
   const entries: EntityDictionaryEntry[] = []
   for (const e of entities) {
     const key = `${e.type}:${e.originalText.trim().toLowerCase()}`
     if (seen.has(key)) continue
     seen.add(key)
-    entries.push({ original: e.originalText, pseudonym: e.pseudonym, type: e.type })
+    const entry: EntityDictionaryEntry = {
+      original: e.originalText,
+      pseudonym: e.pseudonym,
+      type: e.type
+    }
+    // Persisti il canonical solo se presente e diverso dall'originale (additivo).
+    const canonical = canonicalOf?.(e.originalText)
+    if (canonical && canonical.trim().toLowerCase() !== e.originalText.trim().toLowerCase()) {
+      entry.canonical = canonical
+    }
+    entries.push(entry)
   }
   return {
     version: 1,
@@ -65,7 +79,13 @@ export function loadDictionary(folderPath: string): EntityDictionary | null {
       log.warn('Dizionario pratica ignorato: formato non valido', { path })
       return null
     }
-    const entries = raw.entries.filter(isValidEntry)
+    const entries = raw.entries.filter(isValidEntry).map((e) => {
+      const out: EntityDictionaryEntry = { original: e.original, pseudonym: e.pseudonym, type: e.type }
+      if (typeof (e as { canonical?: unknown }).canonical === 'string') {
+        out.canonical = (e as { canonical: string }).canonical
+      }
+      return out
+    })
     return { version: 1, practiceId: raw.practiceId, exportedAt: raw.exportedAt, entries }
   } catch (err) {
     log.error('Errore lettura dizionario pratica', {

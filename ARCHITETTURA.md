@@ -40,7 +40,7 @@ LLM. È l'utente a scegliere le cartelle. Nulla di sensibile lascia la macchina 
 flowchart TB
   Client["Client MCP (Claude Desktop / Cursor / app)"]
   subgraph Server["AnonyMCP server (stdio)"]
-    Tools["Tools: list_folders, scan_practice,\nget_practice_status, search"]
+    Tools["Tools: list_folders, scan_practice,\nget_practice_status, search,\nwrite_document, create_folder"]
     Res["Resources: anonymcp://practice/{folderId}/{docId}"]
     Reg["PracticeRegistry (stato, quarantena)"]
     subgraph Engine["engine + pipeline"]
@@ -113,6 +113,31 @@ sequenceDiagram
   S-->>L: solo testo pseudonimizzato
 ```
 
+## 5-bis. Flusso M-Write: l'LLM produce, l'MCP salva (re-idratato)
+L'LLM legge i documenti pseudonimizzati e può produrre bozze (atti, contratti, ricerche). L'LLM
+**non tocca mai il disco**: chiama `anonymcp_write_document(folderId, relPath, content)` e l'MCP
+scrive nella pratica. Vedi [ADR-0005](docs/adr/0005-mcp-write-rehydration.md). Solo formati
+testuali (`.md/.txt/.tex/.csv/.json/.xml/.html`); i binari sono una milestone futura.
+```mermaid
+sequenceDiagram
+  participant L as LLM/Client MCP
+  participant S as AnonyMCP server
+  participant Sess as SessionManager (RAM)
+  participant U as Utente (TUI)
+  L->>S: write_document(folderId, relPath, content con pseudonimi)
+  S->>S: pathGuard (relPath dentro la pratica) + allowlist estensioni
+  S->>Sess: rehydrate(content) — pseudonimo→reale (LOCALE, mai esposto)
+  Note over Sess: co-reference collassata via entityId;\nambiguità → fail-safe (non sostituita)
+  S->>S: scrive in .anonymcp-staging/ (se requireManualApproval)
+  S-->>L: {staged, relPath, rehydratedEntities, ambiguousPlaceholders} — NO PII
+  U->>S: conferma in TUI → promoteWrite (staging → destinazione finale)
+```
+Il testo **re-idratato** (con i nomi reali) finisce su disco solo dopo la conferma umana; la
+risposta verso l'LLM non contiene mai dati reali. La re-idratazione è un passaggio **locale**
+lato server (non un tool MCP di de-anonimizzazione): la co-reference ("Mario Rossi" e "Rossi")
+è risolta tramite un **id-entità interno** (RAM-only) e la forma canonica; un cognome condiviso
+da più persone non viene ri-idratato (fail-safe) ed è segnalato.
+
 ## 6. Stati di un documento
 ```mermaid
 stateDiagram-v2
@@ -140,6 +165,9 @@ Sintesi; dettaglio in [security-invariants](docs/agent-guides/security-invariant
 - **docId opaco** (HMAC con chiave di sessione), nessun nome file negli URI.
 - **Dati art. 9/10 mai a LLM cloud** (solo LLM locale).
 - `pathGuard` (allowlist + no traversal), logging solo su stderr, quarantena di default.
+- **Scrittura (M-Write)**: la re-idratazione (pseudonimo→reale) è LOCALE, mai esposta via MCP;
+  il return all'LLM è privo di PII; staging + conferma umana prima del salvataggio definitivo;
+  ambiguità di entità → fail-safe (non ri-idratata + segnalazione). Vedi ADR-0005.
 
 ### Obblighi legali (studio legale IT)
 Cifratura fascicoli (art. 32), segreto professionale (art. 13 C.D.F.), oscuramento obbligatorio

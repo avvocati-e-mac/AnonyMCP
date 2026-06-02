@@ -35,14 +35,16 @@ beforeAll(async () => {
 })
 
 describe('AnonyMCP server (e2e via MCP client)', () => {
-  it('espone i 4 tool attesi e NESSUN tool di de-anonimizzazione', async () => {
+  it('espone i 6 tool attesi e NESSUN tool di de-anonimizzazione', async () => {
     const { tools } = await client.listTools()
     const names = tools.map((t) => t.name).sort()
     expect(names).toEqual([
+      'anonymcp_create_folder',
       'anonymcp_get_practice_status',
       'anonymcp_list_folders',
       'anonymcp_scan_practice',
-      'anonymcp_search'
+      'anonymcp_search',
+      'anonymcp_write_document'
     ])
     expect(names).not.toContain('anonymcp_get_mapping')
     expect(names).not.toContain('anonymcp_deanonymize')
