@@ -99,6 +99,9 @@ una decisione ADR esistente è un errore critico.
   quello scopo. Semplificare non deve mai buttare via la funzione reale. **Se lo scopo non
   è chiaro, CHIEDI esplicitamente** (AskUserQuestion) invece di assumere.
 - **Plan mode** prima di scrivere; task atomici (5–10 min); review del diff prima del commit.
+- **Branch dedicato prima delle modifiche**: non lavorare direttamente su `main`/branch stabile,
+  salvo richiesta esplicita dell'utente. Crea o usa un branch descrittivo per il task prima di
+  editare e committare (es. `codex/<ambito>`).
 - **Commit atomico = una decisione**, reversibile con `git revert`. Test + doc nello **stesso
   commit** del codice. Messaggio che spiega il *perché* + `Co-Authored-By: Claude Opus 4.8
   <noreply@anthropic.com>`.
