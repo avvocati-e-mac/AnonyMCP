@@ -8,6 +8,7 @@ import {
   Loader2,
   Lock,
   Play,
+  Plus,
   RefreshCw,
   Settings,
   ShieldCheck
@@ -16,6 +17,7 @@ import type {
   AppStatus,
   CloudBlockedSensitiveDocument,
   DashboardSummary,
+  ReviewDocumentDetail,
   ReviewDocumentListItem
 } from '../../shared/ipc.js'
 
@@ -274,13 +276,192 @@ function sensitivityLabel(doc: Pick<ReviewDocumentListItem, 'sensitive' | 'sensi
   return doc.sensitive ? 'Sensibile' : 'Non sensibile'
 }
 
+const ENTITY_TYPES: ReviewDocumentDetail['entities'][number]['type'][] = [
+  'PERSONA',
+  'ORGANIZZAZIONE',
+  'LUOGO',
+  'CODICE_FISCALE',
+  'PARTITA_IVA',
+  'IBAN',
+  'EMAIL',
+  'TELEFONO',
+  'INDIRIZZO',
+  'NUMERO_DOCUMENTO',
+  'NUMERO_RUOLO',
+  'PEC',
+  'PROTOCOLLO'
+]
+
+function entityKey(entity: ReviewDocumentDetail['entities'][number]): string {
+  return JSON.stringify([entity.type, entity.originalText, entity.pseudonym, entity.source])
+}
+
+function ReviewDetailPanel({
+  detail,
+  selectedKeys,
+  manualText,
+  manualType,
+  actionBusy,
+  actionError,
+  onToggleEntity,
+  onManualTextChange,
+  onManualTypeChange,
+  onAddManualEntity,
+  onSetSensitivity,
+  onApprove,
+  onClose
+}: {
+  detail: ReviewDocumentDetail
+  selectedKeys: Set<string>
+  manualText: string
+  manualType: ReviewDocumentDetail['entities'][number]['type']
+  actionBusy: boolean
+  actionError: string | null
+  onToggleEntity: (key: string) => void
+  onManualTextChange: (value: string) => void
+  onManualTypeChange: (value: ReviewDocumentDetail['entities'][number]['type']) => void
+  onAddManualEntity: () => void
+  onSetSensitivity: (decision: 'sensitive' | 'not_sensitive' | null) => void
+  onApprove: () => void
+  onClose: () => void
+}): React.JSX.Element {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="truncate font-medium text-slate-900">{detail.fileName}</h2>
+          <div className="mt-1 text-sm text-slate-500">
+            {detail.label} - {statusLabel(detail.status)} - {sensitivityLabel(detail)}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+        >
+          Chiudi
+        </button>
+      </div>
+
+      <div className="grid gap-4 p-5 lg:grid-cols-2">
+        <div>
+          <div className="mb-2 text-sm font-medium text-slate-700">Originale locale</div>
+          <pre className="h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-800">
+            {detail.originalText}
+          </pre>
+        </div>
+        <div>
+          <div className="mb-2 text-sm font-medium text-slate-700">Pseudonimizzato</div>
+          <pre className="h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-800">
+            {detail.anonymizedText}
+          </pre>
+        </div>
+      </div>
+
+      <div className="grid gap-4 border-t border-slate-100 p-5 lg:grid-cols-[1fr_320px]">
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-slate-900">Entita' da confermare</h3>
+            <span className="text-xs text-slate-500">Rischio residuo {Math.round(detail.residualRisk * 100)}%</span>
+          </div>
+          <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
+            {detail.entities.length ? (
+              detail.entities.map((entity) => {
+                const key = entityKey(entity)
+                return (
+                  <label key={key} className="flex cursor-pointer items-start gap-3 border-b border-slate-100 p-3 last:border-b-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedKeys.has(key)}
+                      onChange={() => onToggleEntity(key)}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-slate-900">{entity.originalText}</span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {entity.type} - {entity.pseudonym} - {entity.source} - {entity.occurrences} occ.
+                      </span>
+                    </span>
+                  </label>
+                )
+              })
+            ) : (
+              <div className="p-4 text-sm text-slate-500">Nessuna entita' rilevata.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-slate-900">Aggiungi entita'</h3>
+            <input
+              value={manualText}
+              onChange={(event) => onManualTextChange(event.target.value)}
+              placeholder="Testo esatto nel documento"
+              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+            <select
+              value={manualType}
+              onChange={(event) => onManualTypeChange(event.target.value as typeof manualType)}
+              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              {ENTITY_TYPES.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={onAddManualEntity}
+              disabled={actionBusy || manualText.trim().length === 0}
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Plus size={16} />
+              Aggiungi
+            </button>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-slate-900">Sensibilita'</h3>
+            <div className="mt-2 grid gap-2">
+              <button type="button" onClick={() => onSetSensitivity('sensitive')} className="rounded-md border border-amber-300 px-3 py-2 text-left text-sm text-amber-900 hover:bg-amber-50">
+                Sensibile
+              </button>
+              <button type="button" onClick={() => onSetSensitivity('not_sensitive')} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+                Non sensibile
+              </button>
+              <button type="button" onClick={() => onSetSensitivity(null)} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+                Usa suggerimento
+              </button>
+            </div>
+          </div>
+
+          {actionError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</div>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={actionBusy}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+            Applica e approva
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function Dashboard({
   status,
   dashboard,
   reviewDocs,
   sensitiveDocs,
   scanningFolder,
-  onScan
+  onScan,
+  onRefresh
 }: {
   status: AppStatus
   dashboard: DashboardSummary | null
@@ -288,7 +469,15 @@ function Dashboard({
   sensitiveDocs: CloudBlockedSensitiveDocument[]
   scanningFolder: string | null
   onScan: (folderId: string) => void
+  onRefresh: () => Promise<void>
 }): React.JSX.Element {
+  const [activeRef, setActiveRef] = useState<{ folderId: string; docId: string } | null>(null)
+  const [detail, setDetail] = useState<ReviewDocumentDetail | null>(null)
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
+  const [manualText, setManualText] = useState('')
+  const [manualType, setManualType] = useState<ReviewDocumentDetail['entities'][number]['type']>('PERSONA')
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   const totals = dashboard?.totals
   const cards = useMemo(
     () => [
@@ -299,6 +488,104 @@ function Dashboard({
     ],
     [status.configuredFolders, totals]
   )
+
+  async function openReviewDocument(folderId: string, docId: string): Promise<void> {
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      const nextDetail = await window.anonymcp.getReviewDocument(folderId, docId)
+      setActiveRef(nextDetail ? { folderId, docId } : null)
+      setDetail(nextDetail)
+      setSelectedKeys(new Set(nextDetail?.entities.map(entityKey) ?? []))
+      setManualText('')
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function reloadDetail(): Promise<void> {
+    if (!activeRef) return
+    const nextDetail = await window.anonymcp.getReviewDocument(activeRef.folderId, activeRef.docId)
+    setDetail(nextDetail)
+    setSelectedKeys(new Set(nextDetail?.entities.map(entityKey) ?? []))
+  }
+
+  function toggleEntity(key: string): void {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  async function addManualEntity(): Promise<void> {
+    if (!activeRef || !manualText.trim()) return
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      const added = await window.anonymcp.addManualEntity(
+        activeRef.folderId,
+        activeRef.docId,
+        manualText.trim(),
+        manualType
+      )
+      if (!added) {
+        setActionError("Entita' non aggiunta: verifica che il testo compaia nel documento.")
+      } else {
+        setManualText('')
+        await reloadDetail()
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function setSensitivity(decision: 'sensitive' | 'not_sensitive' | null): Promise<void> {
+    if (!activeRef) return
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      await window.anonymcp.setDocumentSensitivity(activeRef.folderId, activeRef.docId, decision)
+      await reloadDetail()
+      await onRefresh()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function approveDetail(): Promise<void> {
+    if (!activeRef || !detail) return
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      const selected = detail.entities.filter((entity) => selectedKeys.has(entityKey(entity)))
+      const applied = await window.anonymcp.applyReviewSelection(activeRef.folderId, activeRef.docId, selected)
+      if (!applied) {
+        setActionError('Applicazione della selezione non riuscita: il documento potrebbe essere cambiato.')
+        return
+      }
+      const approved = await window.anonymcp.approveReviewDocument(activeRef.folderId, activeRef.docId)
+      if (!approved) {
+        setActionError('Approvazione non riuscita: il documento potrebbe essere cambiato.')
+        return
+      }
+      setActiveRef(null)
+      setDetail(null)
+      setSelectedKeys(new Set())
+      await onRefresh()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
 
   return (
     <main className="flex-1 bg-slate-50 p-6">
@@ -378,6 +665,28 @@ function Dashboard({
           </div>
         </section>
 
+        {detail ? (
+          <ReviewDetailPanel
+            detail={detail}
+            selectedKeys={selectedKeys}
+            manualText={manualText}
+            manualType={manualType}
+            actionBusy={actionBusy}
+            actionError={actionError}
+            onToggleEntity={toggleEntity}
+            onManualTextChange={setManualText}
+            onManualTypeChange={setManualType}
+            onAddManualEntity={() => void addManualEntity()}
+            onSetSensitivity={(decision) => void setSensitivity(decision)}
+            onApprove={() => void approveDetail()}
+            onClose={() => {
+              setActiveRef(null)
+              setDetail(null)
+              setActionError(null)
+            }}
+          />
+        ) : null}
+
         <section className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
@@ -392,9 +701,18 @@ function Dashboard({
                         <div className="truncate text-sm font-medium text-slate-900">{doc.fileName}</div>
                         <div className="mt-1 text-xs text-slate-500">{doc.label} - {statusLabel(doc.status)}</div>
                       </div>
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
-                        {sensitivityLabel(doc)}
-                      </span>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                          {sensitivityLabel(doc)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void openReviewDocument(doc.folderId, doc.docId)}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                          Apri
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -417,9 +735,18 @@ function Dashboard({
                         <div className="truncate text-sm font-medium text-slate-900">{doc.fileName}</div>
                         <div className="mt-1 truncate text-xs text-slate-500">{doc.label} - {doc.practicePath}</div>
                       </div>
-                      <span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">
-                        {doc.sensitivityOverride === 'sensitive' ? 'Deciso sensibile' : 'Bloccato'}
-                      </span>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                          {doc.sensitivityOverride === 'sensitive' ? 'Deciso sensibile' : 'Bloccato'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void openReviewDocument(doc.folderId, doc.docId)}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                          Valuta
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -491,6 +818,7 @@ export default function App(): React.JSX.Element {
           sensitiveDocs={sensitiveDocs}
           scanningFolder={scanningFolder}
           onScan={(folderId) => void scanPractice(folderId)}
+          onRefresh={refresh}
         />
       ) : (
         <SetupScreen status={status} />

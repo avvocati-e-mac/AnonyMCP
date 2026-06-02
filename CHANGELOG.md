@@ -21,6 +21,8 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 - IPC Electron validato con Zod per dashboard, scan pratica, lista review e lista documenti
   sensibili bloccati. La dashboard ora mostra contatori reali e permette di scansionare una
   pratica dalla UI.
+- Prima schermata di review grafica: dettaglio documento con testo originale locale e testo
+  pseudonimizzato, checklist entità, aggiunta manuale, override sensibilità e approvazione.
 
 ### Aggiunto — Fase 2 / M-Write (scrittura LLM→cartella)
 - Strumenti MCP `anonymcp_write_document` e `anonymcp_create_folder`: l'LLM salva bozze

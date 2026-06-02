@@ -5,11 +5,18 @@ import { LocalReviewService } from '../../app/reviewService.js'
 import { log } from '../../util/logger.js'
 import {
   AppStatusSchema,
+  BooleanResultSchema,
   CloudBlockedSensitiveDocumentListSchema,
   DashboardSummarySchema,
   IPC_CHANNELS,
+  ManualEntityRequestSchema,
+  ReviewApplySelectionRequestSchema,
+  ReviewDocumentDetailSchema,
+  ReviewDocumentRequestSchema,
+  ReviewEntitySchema,
   ReviewDocumentListSchema,
   ReviewListRequestSchema,
+  ReviewSetSensitivityRequestSchema,
   ScanPracticeRequestSchema,
   ScanPracticeResultSchema,
   type AppStatus
@@ -126,6 +133,55 @@ function registerIpcHandlers(): void {
     assertTrustedSender(event)
     const request = ReviewListRequestSchema.parse(payload ?? {})
     return ReviewDocumentListSchema.parse(localReviewService().listReviewDocuments(request.folderId))
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REVIEW_DETAIL, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = ReviewDocumentRequestSchema.parse(payload)
+    return ReviewDocumentDetailSchema.nullable().parse(
+      localReviewService().getReviewDocument(request.folderId, request.docId)
+    )
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REVIEW_ADD_MANUAL_ENTITY, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = ManualEntityRequestSchema.parse(payload)
+    return ReviewEntitySchema.nullable().parse(
+      localReviewService().addManualEntity(
+        request.folderId,
+        request.docId,
+        request.originalText,
+        request.type
+      )
+    )
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REVIEW_APPLY_SELECTION, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = ReviewApplySelectionRequestSchema.parse(payload)
+    return BooleanResultSchema.parse({
+      ok: localReviewService().applyReviewSelection(request.folderId, request.docId, request.entities)
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REVIEW_APPROVE, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = ReviewDocumentRequestSchema.parse(payload)
+    return BooleanResultSchema.parse({
+      ok: localReviewService().approveDocument(request.folderId, request.docId)
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REVIEW_SET_SENSITIVITY, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = ReviewSetSensitivityRequestSchema.parse(payload)
+    return BooleanResultSchema.parse({
+      ok: localReviewService().setSensitivityOverride(
+        request.folderId,
+        request.docId,
+        request.decision
+      )
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.SENSITIVE_BLOCKED_LIST, (event) => {

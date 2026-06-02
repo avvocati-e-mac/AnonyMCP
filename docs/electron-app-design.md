@@ -432,6 +432,8 @@ Implementazione locale prevista/avviata:
   per il cloud; e' una facciata locale, non un tool MCP.
 - il main Electron espone alla UI solo canali IPC nominali validati con Zod: dashboard, scan,
   lista review e lista documenti sensibili bloccati.
+- il dettaglio review espone testo originale e nomi file solo alla UI locale; gli schemi lista
+  restano separati e rifiutano campi come `originalText`.
 
 ```text
 +------------------------------------------------------------------+
