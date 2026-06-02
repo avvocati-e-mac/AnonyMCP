@@ -7,8 +7,16 @@
 // (RAM) e non viene mai serializzata in chiaro.
 // ============================================================
 
-import { readdirSync, statSync, readFileSync } from 'node:fs'
-import { join, basename } from 'node:path'
+import {
+  readdirSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  renameSync
+} from 'node:fs'
+import { join, basename, dirname, relative } from 'node:path'
 import type { AnonymizationResult, DetectedEntity, DocumentStatus, ExposedFolder } from '../types.js'
 import { isSupported, isTextDocument } from '../pipeline/toMarkdown.js'
 import { processText } from '../pipeline/documentService.js'
@@ -26,7 +34,30 @@ import {
   fileSourceHash
 } from './approvalStore.js'
 import { ChunkIndex, indexPath } from '../search/chunkIndex.js'
+import {
+  prepareWrite,
+  resolveFolderTarget,
+  stagingPathFor
+} from './writeService.js'
+import {
+  loadPendingWrites,
+  recordPendingWrite,
+  removePendingWrite,
+  contentHash,
+  type PendingWrite
+} from './writeApprovalStore.js'
 import { log } from '../util/logger.js'
+
+/** Esito di una scrittura M-Write (LOCALE; il return verso l'LLM è derivato senza PII). */
+export interface WriteOutcome {
+  relPath: string
+  /** Numero di pseudonimi sostituiti con i valori reali. */
+  rehydratedCount: number
+  /** Pseudonimi ambigui non sostituiti (solo pseudonimi, mai PII). */
+  ambiguous: string[]
+  /** True se finito in staging in attesa di conferma umana. */
+  staged: boolean
+}
 
 export interface DocEntry {
   /** Id opaco usato nell'URI della resource (non rivela il nome file reale). */
@@ -475,6 +506,100 @@ export class PracticeRegistry {
       entitiesByType: p.session.getStats().byType,
       sensitiveDocs
     }
+  }
+
+  // ── M-Write: scrittura LLM→cartella (re-idratata) ─────────────────────────
+  // Vedi ADR-0005. La re-idratazione è LOCALE; il valore di ritorno non contiene PII.
+
+  /**
+   * Scrive una bozza testuale dell'LLM nella pratica, re-idratata (pseudonimo→reale).
+   * Con requireManualApproval: scrive in staging e registra un pending write (la TUI
+   * promuove su conferma). Altrimenti scrive direttamente in destinazione.
+   * Lancia errori azionabili (path/estensione/overwrite). Non ritorna mai PII.
+   */
+  stageWrite(
+    folderId: string,
+    relPath: string,
+    content: string,
+    overwrite = false
+  ): WriteOutcome {
+    const practice = this.practices.get(folderId)
+    if (!practice) throw new Error(`Pratica sconosciuta: ${folderId}. Usa list_folders.`)
+
+    const folderPath = practice.folder.path
+    const { absTarget, rehydrated } = prepareWrite(folderPath, relPath, content, practice.session)
+    const relNorm = relative(folderPath, absTarget)
+
+    if (!overwrite && existsSync(absTarget)) {
+      throw new Error(`File già esistente: ${relNorm}. Usa overwrite per sostituirlo.`)
+    }
+
+    if (this.requireManualApproval) {
+      // Staging + pending: il file ri-idratato (con valori reali) resta in una
+      // sottocartella artefatto, mai esposta come resource, fino alla conferma umana.
+      const staged = stagingPathFor(folderPath, absTarget)
+      mkdirSync(dirname(staged), { recursive: true })
+      writeFileSync(staged, rehydrated.text, 'utf8')
+      const pending: PendingWrite = {
+        relPath: relNorm,
+        contentHash: contentHash(rehydrated.text),
+        stagedAt: new Date().toISOString()
+      }
+      recordPendingWrite(folderPath, folderId, pending)
+      log.info('Scrittura in staging (attende conferma)', { folderId, relPath: relNorm })
+      return {
+        relPath: relNorm,
+        rehydratedCount: rehydrated.substituted,
+        ambiguous: rehydrated.ambiguous,
+        staged: true
+      }
+    }
+
+    // Auto-approve: scrittura diretta in destinazione.
+    mkdirSync(dirname(absTarget), { recursive: true })
+    writeFileSync(absTarget, rehydrated.text, 'utf8')
+    log.info('Scrittura diretta (auto-approve)', { folderId, relPath: relNorm })
+    return {
+      relPath: relNorm,
+      rehydratedCount: rehydrated.substituted,
+      ambiguous: rehydrated.ambiguous,
+      staged: false
+    }
+  }
+
+  /** Crea una sottocartella dentro la pratica (idempotente). Path validato. */
+  createFolder(folderId: string, relPath: string): { relPath: string } {
+    const practice = this.practices.get(folderId)
+    if (!practice) throw new Error(`Pratica sconosciuta: ${folderId}. Usa list_folders.`)
+    const abs = resolveFolderTarget(practice.folder.path, relPath)
+    mkdirSync(abs, { recursive: true })
+    log.info('Cartella creata', { folderId, relPath: relative(practice.folder.path, abs) })
+    return { relPath: relative(practice.folder.path, abs) }
+  }
+
+  /** Pending write in attesa di conferma (uso LOCALE, per la TUI). */
+  listPendingWrites(folderId: string): PendingWrite[] {
+    const practice = this.practices.get(folderId)
+    if (!practice) return []
+    return loadPendingWrites(practice.folder.path)
+  }
+
+  /**
+   * Promuove una scrittura dallo staging alla destinazione finale (conferma umana).
+   * Uso LOCALE (TUI). Ritorna true se promossa.
+   */
+  promoteWrite(folderId: string, relPath: string): boolean {
+    const practice = this.practices.get(folderId)
+    if (!practice) return false
+    const folderPath = practice.folder.path
+    const absTarget = resolveFolderTarget(folderPath, relPath)
+    const staged = stagingPathFor(folderPath, absTarget)
+    if (!existsSync(staged)) return false
+    mkdirSync(dirname(absTarget), { recursive: true })
+    renameSync(staged, absTarget)
+    removePendingWrite(folderPath, folderId, relative(folderPath, absTarget))
+    log.info('Scrittura promossa', { folderId, relPath })
+    return true
   }
 
   /** Chiude gli indici di ricerca aperti (cleanup su shutdown). */

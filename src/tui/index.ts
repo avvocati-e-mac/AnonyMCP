@@ -12,6 +12,7 @@
 // ============================================================
 
 import { readFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
 import { loadConfig } from '../config.js'
 import { PracticeRegistry } from '../practice/practiceRegistry.js'
 import { setLogLevel, log } from '../util/logger.js'
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
 
   if (pending.length === 0) {
     process.stdout.write('Nessun documento da revisionare. Tutto già approvato.\n')
+    await reviewPendingWrites(registry, practiceId)
     registry.closeIndexes()
     return
   }
@@ -77,10 +79,48 @@ async function main(): Promise<void> {
   }
 
   registry.exportDictionary(practiceId)
-  registry.closeIndexes()
   process.stdout.write(
     `\nRevisione completata: ${approvedCount}/${pending.length} document${pending.length === 1 ? 'o approvato' : 'i approvati'}.\n`
   )
+
+  // Bozze scritte dall'LLM in attesa di conferma (M-Write, ADR-0005).
+  await reviewPendingWrites(registry, practiceId)
+  registry.closeIndexes()
+}
+
+/**
+ * Mostra le bozze scritte dall'LLM in staging e, su conferma umana, le promuove
+ * dalla cartella di staging alla destinazione finale (invariante #8, ADR-0005).
+ * I file in staging contengono già i valori reali (re-idratati): è qui che
+ * l'avvocato decide se renderli definitivi.
+ */
+async function reviewPendingWrites(registry: PracticeRegistry, practiceId: string): Promise<void> {
+  const pending = registry.listPendingWrites(practiceId)
+  if (pending.length === 0) return
+
+  process.stdout.write(
+    `\nBozze scritte dall'assistente in attesa di conferma (${pending.length}):\n`
+  )
+  for (const w of pending) {
+    const ok = await confirm(`  Salvare "${w.relPath}" nella pratica? [s/N] `)
+    if (ok) {
+      registry.promoteWrite(practiceId, w.relPath)
+      process.stdout.write(`  ✓ Salvato: ${w.relPath}\n`)
+    } else {
+      process.stdout.write(`  · Lasciato in sospeso: ${w.relPath}\n`)
+    }
+  }
+}
+
+/** Domanda sì/no da terminale (default: no). */
+function confirm(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  return new Promise((res) => {
+    rl.question(question, (answer) => {
+      rl.close()
+      res(/^s(i|ì)?$/i.test(answer.trim()))
+    })
+  })
 }
 
 function safeRead(path: string): string {
