@@ -5,31 +5,65 @@ import {
   FileWarning,
   FolderPlus,
   ListChecks,
+  Loader2,
   Lock,
+  Play,
+  RefreshCw,
   Settings,
   ShieldCheck
 } from 'lucide-react'
-import type { AppStatus } from '../../shared/ipc.js'
+import type {
+  AppStatus,
+  CloudBlockedSensitiveDocument,
+  DashboardSummary,
+  ReviewDocumentListItem
+} from '../../shared/ipc.js'
 
 const ONBOARDING_KEY = 'anonymcp:onboarding-dismissed'
 
 type Screen = 'onboarding' | 'setup' | 'dashboard'
 
-function useInitialStatus(): {
+interface AppModel {
   status: AppStatus | null
+  dashboard: DashboardSummary | null
+  reviewDocs: ReviewDocumentListItem[]
+  sensitiveDocs: CloudBlockedSensitiveDocument[]
   loading: boolean
   error: string | null
+  scanningFolder: string | null
   refresh: () => Promise<void>
-} {
+  scanPractice: (folderId: string) => Promise<void>
+}
+
+function useAppModel(): AppModel {
   const [status, setStatus] = useState<AppStatus | null>(null)
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
+  const [reviewDocs, setReviewDocs] = useState<ReviewDocumentListItem[]>([])
+  const [sensitiveDocs, setSensitiveDocs] = useState<CloudBlockedSensitiveDocument[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [scanningFolder, setScanningFolder] = useState<string | null>(null)
 
   async function refresh(): Promise<void> {
     setLoading(true)
     setError(null)
     try {
-      setStatus(await window.anonymcp.getAppStatus())
+      const nextStatus = await window.anonymcp.getAppStatus()
+      setStatus(nextStatus)
+      if (nextStatus.mcpReady) {
+        const [nextDashboard, nextReviewDocs, nextSensitiveDocs] = await Promise.all([
+          window.anonymcp.getDashboard(),
+          window.anonymcp.listReviewDocuments(),
+          window.anonymcp.listCloudBlockedSensitiveDocuments()
+        ])
+        setDashboard(nextDashboard)
+        setReviewDocs(nextReviewDocs)
+        setSensitiveDocs(nextSensitiveDocs)
+      } else {
+        setDashboard(null)
+        setReviewDocs([])
+        setSensitiveDocs([])
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -37,14 +71,40 @@ function useInitialStatus(): {
     }
   }
 
+  async function scanPractice(folderId: string): Promise<void> {
+    setScanningFolder(folderId)
+    setError(null)
+    try {
+      await window.anonymcp.scanPractice(folderId)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setScanningFolder(null)
+    }
+  }
+
   useEffect(() => {
     void refresh()
   }, [])
 
-  return { status, loading, error, refresh }
+  return {
+    status,
+    dashboard,
+    reviewDocs,
+    sensitiveDocs,
+    loading,
+    error,
+    scanningFolder,
+    refresh,
+    scanPractice
+  }
 }
 
-function AppHeader({ onShowPrivacy }: { onShowPrivacy: () => void }): React.JSX.Element {
+function AppHeader({ onShowPrivacy, onRefresh }: {
+  onShowPrivacy: () => void
+  onRefresh: () => void
+}): React.JSX.Element {
   return (
     <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
       <div className="flex items-center gap-2">
@@ -55,6 +115,15 @@ function AppHeader({ onShowPrivacy }: { onShowPrivacy: () => void }): React.JSX.
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
+          aria-label="Aggiorna"
+          title="Aggiorna"
+        >
+          <RefreshCw size={18} />
+        </button>
         <button
           type="button"
           onClick={onShowPrivacy}
@@ -185,15 +254,50 @@ function SetupScreen({ status }: { status: AppStatus | null }): React.JSX.Elemen
   )
 }
 
-function Dashboard({ status }: { status: AppStatus }): React.JSX.Element {
+function statusLabel(status: ReviewDocumentListItem['status']): string {
+  switch (status) {
+    case 'approved':
+      return 'Approvato'
+    case 'review_required':
+      return 'Da review'
+    case 'quarantined':
+      return 'Quarantena'
+    case 'superseded':
+      return 'Da riscansionare'
+  }
+}
+
+function sensitivityLabel(doc: Pick<ReviewDocumentListItem, 'sensitive' | 'sensitiveSuggested' | 'sensitivityOverride'>): string {
+  if (doc.sensitivityOverride === 'sensitive') return 'Sensibile deciso'
+  if (doc.sensitivityOverride === 'not_sensitive') return 'Non sensibile deciso'
+  if (doc.sensitiveSuggested) return 'Suggerito sensibile'
+  return doc.sensitive ? 'Sensibile' : 'Non sensibile'
+}
+
+function Dashboard({
+  status,
+  dashboard,
+  reviewDocs,
+  sensitiveDocs,
+  scanningFolder,
+  onScan
+}: {
+  status: AppStatus
+  dashboard: DashboardSummary | null
+  reviewDocs: ReviewDocumentListItem[]
+  sensitiveDocs: CloudBlockedSensitiveDocument[]
+  scanningFolder: string | null
+  onScan: (folderId: string) => void
+}): React.JSX.Element {
+  const totals = dashboard?.totals
   const cards = useMemo(
     () => [
-      { label: 'Pratiche configurate', value: status.configuredFolders, icon: FolderPlus },
-      { label: 'Documenti da review', value: 0, icon: ListChecks },
-      { label: 'Sensibili da valutare', value: 0, icon: FileWarning },
-      { label: 'Bozze LLM in attesa', value: 0, icon: Lock }
+      { label: 'Pratiche configurate', value: totals?.practices ?? status.configuredFolders, icon: FolderPlus },
+      { label: 'Documenti da review', value: totals?.reviewRequired ?? 0, icon: ListChecks },
+      { label: 'Sensibili bloccati cloud', value: totals?.cloudBlockedSensitiveDocs ?? 0, icon: FileWarning },
+      { label: 'Bozze LLM in attesa', value: totals?.pendingWrites ?? 0, icon: Lock }
     ],
-    [status.configuredFolders]
+    [status.configuredFolders, totals]
   )
 
   return (
@@ -226,28 +330,103 @@ function Dashboard({ status }: { status: AppStatus }): React.JSX.Element {
           ))}
         </section>
 
+        <section className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <h2 className="font-medium text-slate-900">Pratiche</h2>
+            <span className="text-sm text-slate-500">{dashboard?.practices.length ?? 0} configurate</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {dashboard?.practices.length ? (
+              dashboard.practices.map((practice) => (
+                <div key={practice.folderId} className="grid gap-3 px-5 py-4 lg:grid-cols-[1fr_auto]">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-slate-900">{practice.label}</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                        {practice.folderId}
+                      </span>
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                        {practice.matter}
+                      </span>
+                    </div>
+                    <div className="mt-1 truncate text-sm text-slate-500">{practice.path}</div>
+                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
+                      <span>{practice.reviewRequired} da review</span>
+                      <span>{practice.approved} approvati</span>
+                      <span>{practice.exposed} esposti al cloud</span>
+                      <span>{practice.cloudBlockedSensitiveDocs} sensibili bloccati</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onScan(practice.folderId)}
+                    disabled={scanningFolder === practice.folderId}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                  >
+                    {scanningFolder === practice.folderId ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : (
+                      <Play size={16} />
+                    )}
+                    Scansiona
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="px-5 py-8 text-sm text-slate-500">Nessuna pratica caricata.</div>
+            )}
+          </div>
+        </section>
+
         <section className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="font-medium text-slate-900">Attivita' da svolgere</h2>
-            <div className="mt-4 space-y-3 text-sm text-slate-600">
-              <button type="button" className="block w-full rounded-md border border-slate-200 px-4 py-3 text-left hover:bg-slate-50">
-                Scansiona e classifica documenti
-              </button>
-              <button type="button" className="block w-full rounded-md border border-slate-200 px-4 py-3 text-left hover:bg-slate-50">
-                Vai alla review
-              </button>
-              <button type="button" className="block w-full rounded-md border border-slate-200 px-4 py-3 text-left hover:bg-slate-50">
-                Conferma bozze LLM
-              </button>
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="font-medium text-slate-900">Documenti da review</h2>
+            </div>
+            <div className="max-h-80 overflow-auto">
+              {reviewDocs.length ? (
+                reviewDocs.slice(0, 8).map((doc) => (
+                  <div key={`${doc.folderId}-${doc.docId}`} className="border-b border-slate-100 px-5 py-3 last:border-b-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-900">{doc.fileName}</div>
+                        <div className="mt-1 text-xs text-slate-500">{doc.label} - {statusLabel(doc.status)}</div>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                        {sensitivityLabel(doc)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-8 text-sm text-slate-500">Nessun documento in coda.</div>
+              )}
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-5">
-            <h2 className="font-medium text-slate-900">Confine privacy</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              Locale reale, LLM pseudonimizzato, cloud bloccato per documenti sensibili. Questa
-              distinzione resta visibile in ogni flusso dell'app.
-            </p>
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="font-medium text-slate-900">Documenti sensibili bloccati</h2>
+            </div>
+            <div className="max-h-80 overflow-auto">
+              {sensitiveDocs.length ? (
+                sensitiveDocs.slice(0, 8).map((doc) => (
+                  <div key={`${doc.folderId}-${doc.docId}`} className="border-b border-slate-100 px-5 py-3 last:border-b-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-900">{doc.fileName}</div>
+                        <div className="mt-1 truncate text-xs text-slate-500">{doc.label} - {doc.practicePath}</div>
+                      </div>
+                      <span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                        {doc.sensitivityOverride === 'sensitive' ? 'Deciso sensibile' : 'Bloccato'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-8 text-sm text-slate-500">Nessun documento sensibile bloccato.</div>
+              )}
+            </div>
           </div>
         </section>
       </div>
@@ -256,7 +435,17 @@ function Dashboard({ status }: { status: AppStatus }): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
-  const { status, loading, error, refresh } = useInitialStatus()
+  const {
+    status,
+    dashboard,
+    reviewDocs,
+    sensitiveDocs,
+    loading,
+    error,
+    scanningFolder,
+    refresh,
+    scanPractice
+  } = useAppModel()
   const [onboardingDismissed, setOnboardingDismissed] = useState(
     () => localStorage.getItem(ONBOARDING_KEY) === 'true'
   )
@@ -275,6 +464,7 @@ export default function App(): React.JSX.Element {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <AppHeader
+        onRefresh={() => void refresh()}
         onShowPrivacy={() => {
           localStorage.removeItem(ONBOARDING_KEY)
           setOnboardingDismissed(false)
@@ -294,7 +484,14 @@ export default function App(): React.JSX.Element {
           </div>
         </main>
       ) : status?.mcpReady ? (
-        <Dashboard status={status} />
+        <Dashboard
+          status={status}
+          dashboard={dashboard}
+          reviewDocs={reviewDocs}
+          sensitiveDocs={sensitiveDocs}
+          scanningFolder={scanningFolder}
+          onScan={(folderId) => void scanPractice(folderId)}
+        />
       ) : (
         <SetupScreen status={status} />
       )}

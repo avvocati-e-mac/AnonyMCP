@@ -1,10 +1,22 @@
 import { app, BrowserWindow, ipcMain, session, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
 import { loadConfig } from '../../config.js'
+import { LocalReviewService } from '../../app/reviewService.js'
 import { log } from '../../util/logger.js'
-import { AppStatusSchema, IPC_CHANNELS, type AppStatus } from '../shared/ipc.js'
+import {
+  AppStatusSchema,
+  CloudBlockedSensitiveDocumentListSchema,
+  DashboardSummarySchema,
+  IPC_CHANNELS,
+  ReviewDocumentListSchema,
+  ReviewListRequestSchema,
+  ScanPracticeRequestSchema,
+  ScanPracticeResultSchema,
+  type AppStatus
+} from '../shared/ipc.js'
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL
+let serviceCache: { configPath: string; service: LocalReviewService } | null = null
 
 function csp(): string {
   if (isDev) {
@@ -60,10 +72,23 @@ function assertTrustedSender(event: IpcMainInvokeEvent): void {
   }
 }
 
+function configPath(): string {
+  return process.env.ANONYMCP_CONFIG ?? 'anonymcp.config.json'
+}
+
+function localReviewService(): LocalReviewService {
+  const path = configPath()
+  if (serviceCache?.configPath === path) return serviceCache.service
+  serviceCache?.service.close()
+  const config = loadConfig(path)
+  const service = LocalReviewService.fromConfig(config)
+  serviceCache = { configPath: path, service }
+  return service
+}
+
 function readAppStatus(): AppStatus {
-  const configPath = process.env.ANONYMCP_CONFIG ?? 'anonymcp.config.json'
   try {
-    const config = loadConfig(configPath)
+    const config = loadConfig(configPath())
     return AppStatusSchema.parse({
       configPresent: true,
       configuredFolders: config.folders.length,
@@ -83,6 +108,31 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.APP_STATUS, (event) => {
     assertTrustedSender(event)
     return readAppStatus()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DASHBOARD_GET, (event) => {
+    assertTrustedSender(event)
+    return DashboardSummarySchema.parse(localReviewService().dashboard())
+  })
+
+  ipcMain.handle(IPC_CHANNELS.PRACTICE_SCAN, async (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = ScanPracticeRequestSchema.parse(payload)
+    const result = await localReviewService().scanPractice(request.folderId)
+    return ScanPracticeResultSchema.parse(result)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REVIEW_LIST, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = ReviewListRequestSchema.parse(payload ?? {})
+    return ReviewDocumentListSchema.parse(localReviewService().listReviewDocuments(request.folderId))
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SENSITIVE_BLOCKED_LIST, (event) => {
+    assertTrustedSender(event)
+    return CloudBlockedSensitiveDocumentListSchema.parse(
+      localReviewService().listCloudBlockedSensitiveDocuments()
+    )
   })
 }
 
@@ -132,6 +182,11 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  serviceCache?.service.close()
+  serviceCache = null
 })
 
 app.on('web-contents-created', (_event, contents) => {

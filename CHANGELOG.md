@@ -18,6 +18,9 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 - Persistenza locale delle decisioni dell'avvocato sui documenti sensibili
   (`pratica.sensitivity.json`): AnonyMCP suggerisce, ma l'avvocato può forzare `Sensibile` o
   `Non sensibile`; la decisione è legata all'hash del documento e non contiene nomi/path reali.
+- IPC Electron validato con Zod per dashboard, scan pratica, lista review e lista documenti
+  sensibili bloccati. La dashboard ora mostra contatori reali e permette di scansionare una
+  pratica dalla UI.
 
 ### Aggiunto — Fase 2 / M-Write (scrittura LLM→cartella)
 - Strumenti MCP `anonymcp_write_document` e `anonymcp_create_folder`: l'LLM salva bozze

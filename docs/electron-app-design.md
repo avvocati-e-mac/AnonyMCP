@@ -430,6 +430,8 @@ Implementazione locale prevista/avviata:
 - nessuna motivazione testuale viene persistita di default, per evitare note identificanti;
 - `LocalReviewService` aggrega dashboard, review, pending write e lista dei documenti bloccati
   per il cloud; e' una facciata locale, non un tool MCP.
+- il main Electron espone alla UI solo canali IPC nominali validati con Zod: dashboard, scan,
+  lista review e lista documenti sensibili bloccati.
 
 ```text
 +------------------------------------------------------------------+
