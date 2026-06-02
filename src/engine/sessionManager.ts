@@ -231,8 +231,25 @@ export class SessionManager {
    * Ritorna il numero di entità importate.
    */
   importFromDictionary(dict: EntityDictionary): number {
+    // Mappa canonical(lowercase) → entityId, per ricostruire i cluster co-reference:
+    // tutte le voci che condividono lo stesso canonical sono la stessa entità.
+    const entityIdByCanonical = new Map<string, string>()
     for (const entry of dict.entries) {
       this.preload(entry.original, entry.pseudonym, entry.type)
+      // Ripristina l'identità entità se il dizionario porta un canonical (ADR-0005).
+      if (entry.canonical && entry.type === 'PERSONA') {
+        const canonKey = entry.canonical.trim().toLowerCase()
+        let eid = entityIdByCanonical.get(canonKey)
+        if (!eid) {
+          eid = this.newEntityId()
+          entityIdByCanonical.set(canonKey, eid)
+        }
+        const stored = this.dictionary.get(entry.original.trim().toLowerCase())
+        if (stored) {
+          stored.entityId = eid
+          stored.canonical = entry.canonical
+        }
+      }
       // Allinea il contatore se il pseudonimo è del tipo PREFIX_NNN, per evitare
       // collisioni con pseudonimi generati dopo l'import.
       this.bumpCounterFromPseudonym(entry.type, entry.pseudonym)
@@ -264,6 +281,11 @@ export class SessionManager {
   /** True se il testo originale è già noto. */
   has(originalText: string): boolean {
     return this.dictionary.has(originalText.trim().toLowerCase())
+  }
+
+  /** Forma canonica nota per un originale (se l'entità ha un cluster co-reference). RAM-only. */
+  getCanonical(originalText: string): string | undefined {
+    return this.dictionary.get(originalText.trim().toLowerCase())?.canonical
   }
 
   /**

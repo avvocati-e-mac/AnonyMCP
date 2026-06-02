@@ -114,6 +114,12 @@ export interface EntityDictionaryEntry {
   original: string
   pseudonym: string
   type: EntityType
+  /**
+   * Forma canonica dell'entità (longest mention del cluster co-referenziato, es.
+   * "Mario Rossi" per {"Mario Rossi","Rossi"}). Opzionale e retrocompatibile: serve
+   * a ripristinare l'identità tra sessioni per la re-idratazione. Vedi ADR-0005.
+   */
+  canonical?: string
 }
 
 /** Dizionario di pratica esportabile/importabile, salvato accanto ai documenti. */

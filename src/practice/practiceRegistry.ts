@@ -256,7 +256,10 @@ export class PracticeRegistry {
     // La persistenza è best-effort: un errore di scrittura non deve far fallire lo scan.
     if (scanned > 0) {
       try {
-        saveDictionary(practice.folder.path, buildDictionary(folderId, allEntities))
+        saveDictionary(
+          practice.folder.path,
+          buildDictionary(folderId, allEntities, (o) => practice.session.getCanonical(o))
+        )
       } catch (err) {
         log.warn('Salvataggio dizionario pratica fallito (proseguo)', {
           folderId,
@@ -434,7 +437,7 @@ export class PracticeRegistry {
     for (const doc of practice.docs.values()) {
       if (doc.result) allEntities.push(...doc.result.entities)
     }
-    const dict = buildDictionary(folderId, allEntities)
+    const dict = buildDictionary(folderId, allEntities, (o) => practice.session.getCanonical(o))
     saveDictionary(practice.folder.path, dict)
     return dict.entries.length
   }

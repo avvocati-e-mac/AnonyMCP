@@ -118,4 +118,27 @@ describe('SessionManager.importFromDictionary', () => {
     // Una nuova entità CF deve ottenere CF_004, non CF_001 (già usato fino a 003).
     expect(s.getOrCreatePseudonym('CF2', 'CODICE_FISCALE')).toBe('CF_004')
   })
+
+  it('persiste e ripristina il canonical → re-idratazione co-reference cross-sessione', () => {
+    const s1 = new SessionManager()
+    s1.getOrCreatePseudonym('Mario Rossi', 'PERSONA')
+    s1.linkCoreference('Rossi', 'Mario Rossi', 'PERSONA')
+    const dict = buildDictionary(
+      '400f',
+      [
+        entity({ originalText: 'Mario Rossi', type: 'PERSONA', pseudonym: 'M. R.' }),
+        entity({ originalText: 'Rossi', type: 'PERSONA', pseudonym: 'M. R.' })
+      ],
+      (o) => s1.getCanonical(o)
+    )
+    const rossiEntry = dict.entries.find((e) => e.original === 'Rossi')
+    expect(rossiEntry?.canonical).toBe('Mario Rossi')
+
+    // Nuova sessione: importa → la co-reference si ricostruisce, la rehydrate funziona.
+    const s2 = new SessionManager()
+    s2.importFromDictionary(dict)
+    const out = s2.rehydrate('La parte M. R. agisce.')
+    expect(out.text).toBe('La parte Mario Rossi agisce.')
+    expect(out.ambiguous).toEqual([])
+  })
 })
