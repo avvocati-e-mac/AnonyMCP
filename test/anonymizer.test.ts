@@ -82,3 +82,37 @@ describe('detectEntities + applyPseudonyms', () => {
     expect(texts).not.toContain('ricorrente')
   })
 })
+
+// Guard anti-falso-merge + co-reference end-to-end (ADR-0005).
+describe('co-reference e re-idratazione', () => {
+  const ner = (names: string[]) => () =>
+    names.map((text) => ({ type: 'PERSONA' as const, text, source: 'ner' as const }))
+
+  it('(a) co-reference: il cognome isolato si ri-idrata al nome completo', async () => {
+    const text = 'Il Sig. Mario Rossi agisce. Rossi chiede i danni.'
+    const { session } = await detectEntities(text, { ner: ner(['Mario Rossi']) })
+    const out = session.rehydrate('La parte M. R. insiste.')
+    expect(out.text).toBe('La parte Mario Rossi insiste.')
+    expect(out.ambiguous).toEqual([])
+  })
+
+  it('(c) falso merge: cognome condiviso da 2 persone NON viene ri-idratato a caso', async () => {
+    const text = 'Mario Rossi e Anna Rossi sono parti. Rossi ha eccepito.'
+    const { session } = await detectEntities(text, {
+      ner: ner(['Mario Rossi', 'Anna Rossi'])
+    })
+    const pseudoRossi = session.getOrCreatePseudonym('Rossi', 'PERSONA')
+    const out = session.rehydrate(`Riferimento a ${pseudoRossi}.`)
+    // "Rossi" è ambiguo (2 persone) → niente co-reference → mai un nome a caso.
+    expect(out.text).not.toContain('Mario Rossi')
+    expect(out.text).not.toContain('Anna Rossi')
+  })
+
+  it('(d) il cognome non matcha dentro un altra parola (Rossi ≠ Rossini)', async () => {
+    const text = 'Il Sig. Mario Rossi. Il compositore Rossini è altro.'
+    const { session } = await detectEntities(text, { ner: ner(['Mario Rossi']) })
+    const out = session.rehydrate('Opera di Rossini, non di M. R.')
+    expect(out.text).toContain('Rossini')
+    expect(out.text).toContain('Mario Rossi')
+  })
+})

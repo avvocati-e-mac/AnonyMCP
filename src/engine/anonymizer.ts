@@ -87,17 +87,39 @@ export function extractRegexEntities(text: string): RawEntity[] {
  * Co-reference semplice: se "Mario Rossi" è un'entità PERSONA, mappa anche le
  * occorrenze isolate del cognome "Rossi" allo STESSO pseudonimo del nome completo.
  * Ritorna le coppie (cognome → testo-canonico-pieno) da collegare.
+ *
+ * Guard anti-falso-merge (ADR-0005): se lo STESSO cognome è suffisso di PIÙ persone
+ * distinte ("Mario Rossi" e "Anna Rossi"), NON si emette la coppia. Attribuire quel
+ * cognome a un nome a caso scriverebbe il nome SBAGLIATO in una bozza ri-idratata:
+ * meglio lasciarlo pseudonimizzato come entità a sé (sarà segnalato come ambiguo).
  */
 function findCoreferences(text: string, entities: RawEntity[]): { surname: string; canonical: string }[] {
-  const out: { surname: string; canonical: string }[] = []
   const persons = entities.filter((e) => e.type === 'PERSONA' && e.text.includes(' '))
+
+  // Conta quante PERSONA distinte condividono ciascun cognome.
+  const fullNamesBySurname = new Map<string, Set<string>>()
+  for (const p of persons) {
+    const surname = p.text.split(/\s+/).pop()!.toLowerCase()
+    const set = fullNamesBySurname.get(surname) ?? new Set<string>()
+    set.add(p.text.trim().toLowerCase())
+    fullNamesBySurname.set(surname, set)
+  }
+
+  const out: { surname: string; canonical: string }[] = []
+  const seen = new Set<string>()
   for (const p of persons) {
     const parts = p.text.split(/\s+/)
     const surname = parts[parts.length - 1]!
     if (surname.length < 3) continue
+    // Cognome condiviso da >1 persona distinta → ambiguo, niente co-reference.
+    if ((fullNamesBySurname.get(surname.toLowerCase())?.size ?? 0) > 1) continue
+    if (seen.has(surname.toLowerCase())) continue
     // NB: niente flag 'g' — `.test()` su un regex globale è stateful (lastIndex).
     const re = new RegExp(`\\b${surname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-    if (re.test(text)) out.push({ surname, canonical: p.text })
+    if (re.test(text)) {
+      out.push({ surname, canonical: p.text })
+      seen.add(surname.toLowerCase())
+    }
   }
   return out
 }
@@ -191,7 +213,10 @@ export async function detectEntities(
   }
   for (const { surname, canonical } of corefs) {
     if (!session.has(surname)) {
-      session.preload(surname, session.getOrCreatePseudonym(canonical, 'PERSONA'), 'PERSONA')
+      // linkCoreference lega il cognome alla STESSA entità del nome completo
+      // (stesso entityId + forma canonica), così la re-idratazione non lo tratta
+      // come ambiguo. Vedi ADR-0005.
+      session.linkCoreference(surname, canonical, 'PERSONA')
     }
   }
 
