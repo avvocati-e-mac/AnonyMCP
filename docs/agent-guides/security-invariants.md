@@ -17,7 +17,9 @@ devono mai rompersi**: ogni modifica va verificata contro questa lista. Vedi anc
    (`SessionManager`). La cache `.anonymcp` contiene solo `sha256(originale)`, mai il testo,
    ed è cifrata AES-256-GCM (`src/practice/practiceStore.ts`, `src/util/crypto.ts`).
 3. **Niente de-anonimizzazione via MCP.** Nessun tool `get_mapping`/`deanonymize`. La
-   reversibilità, se serve, è un proxy locale fuori dal protocollo.
+   reversibilità, se serve, è un proxy locale fuori dal protocollo. La re-idratazione di
+   `write_document` (M-Write, ADR-0005) è coerente: avviene LOCALE lato server prima di
+   scrivere su disco e il return verso l'LLM non contiene mai PII — non è un tool di de-anon.
 4. **Anonimizza prima di ogni artefatto persistente** (chunk/indice/embedding). Gli embedding
    sono invertibili → indicizzare testo non anonimizzato = leak a riposo.
 5. **Sanitizza prima di pseudonimizzare** (`src/pipeline/toMarkdown.ts:sanitizeMarkdown`):

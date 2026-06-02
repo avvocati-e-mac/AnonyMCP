@@ -25,9 +25,12 @@ esposti come Resources).
 
 ## Tools (azioni)
 snake_case con prefisso `anonymcp_`. Sono **solo azioni**, non lettura di dati passivi.
-I quattro tool: `list_folders`, `scan_practice`, `get_practice_status`, `search`.
+I tool: `list_folders`, `scan_practice`, `get_practice_status`, `search`, e (M-Write, ADR-0005)
+`write_document`, `create_folder`.
 - `inputSchema` con Zod; includere `structuredContent` oltre al `content` testuale.
-- **Vietati**: tool di de-anonimizzazione o che restituiscano la mappa/valori reali.
+- **Vietati**: tool di de-anonimizzazione o che restituiscano la mappa/valori reali. La
+  re-idratazione di `write_document` è un passaggio LOCALE lato server e il suo return non
+  contiene mai PII (vedi ADR-0005): non è un tool di de-anon.
 
 ## Annotations
 | Annotation | Significato |

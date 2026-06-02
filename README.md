@@ -53,7 +53,7 @@ Per l'architettura completa (pipeline, diagrammi, stati di un documento) vedi
 
 ## Gli strumenti MCP
 
-AnonyMCP espone al client quattro strumenti (e i documenti come *Resources*):
+AnonyMCP espone al client questi strumenti (e i documenti come *Resources*):
 
 | Strumento | A cosa serve |
 |---|---|
@@ -61,8 +61,11 @@ AnonyMCP espone al client quattro strumenti (e i documenti come *Resources*):
 | `scan_practice` | Scansiona una pratica: pseudonimizza e mette in quarantena i documenti |
 | `get_practice_status` | Stato di una pratica (quanti documenti approvati / in attesa) |
 | `search` | Ricerca full-text (BM25) **nei documenti già pseudonimizzati** |
+| `write_document` | Salva una bozza testuale dell'LLM nella pratica, **re-idratata** (nomi reali ripristinati in locale); con quarantena attesa di conferma umana |
+| `create_folder` | Crea una sottocartella dentro la pratica (es. "Ricerche") |
 
-Non esiste — di proposito — alcuno strumento di de-anonimizzazione.
+Non esiste — di proposito — alcuno strumento di de-anonimizzazione. La re-idratazione di
+`write_document` è un passaggio **locale** lato server: l'LLM non riceve mai i dati reali.
 
 ## Installazione passo-passo (Fase 1)
 
