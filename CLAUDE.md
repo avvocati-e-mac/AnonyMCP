@@ -109,6 +109,10 @@ una decisione ADR esistente è un errore critico.
   multi-modello** → [development-process](docs/agent-guides/development-process.md).
 - Prima di committare: `npm run typecheck` e `npm test` verdi; nessun dato reale nei
   fixture/commit (`.gitignore`: `*.anonymcp`, `anonymcp.config.json`, indici).
+- **Chiusura sessione = decision log esplicito**: prima della risposta finale verifica se durante
+  la sessione sono state prese decisioni di prodotto/sicurezza/processo. Se sì, devono essere
+  salvate nel documento canonico adatto (ADR per decisioni vincolanti, ROADMAP/threat-model/guide
+  per decisioni operative o rinvii) oppure va dichiarato esplicitamente perché restano solo in chat.
 - **Done = worktree pulito o eccezione esplicita**: prima della risposta finale, se sono state
   fatte modifiche al repository, il worktree deve essere pulito con commit atomici già creati.
   Se non si committa, spiegare esplicitamente il motivo e indicare quali file restano modificati.
