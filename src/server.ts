@@ -272,6 +272,108 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
     }
   )
 
+  // ── Tool: write_document ──────────────────────────────────────────────────
+  // M-Write (ADR-0005): salva una bozza testuale prodotta dall'LLM nella cartella
+  // di pratica. La bozza viene RE-IDRATATA (pseudonimo→reale) lato server PRIMA di
+  // scrivere — passaggio locale, mai esposto via MCP. Con requireManualApproval la
+  // scrittura va in staging e attende conferma umana (TUI). Il return NON contiene PII.
+  server.registerTool(
+    'anonymcp_write_document',
+    {
+      title: 'Salva una bozza nella pratica',
+      description:
+        'Salva un file di TESTO (bozza di atto, contratto, ricerca) dentro la cartella di una ' +
+        'pratica. Estensioni ammesse: .md, .txt, .tex, .csv, .json, .xml, .html. Usa i ' +
+        'placeholder (es. "M. R."): il server ripristina i nomi reali in locale prima di salvare. ' +
+        'Con la quarantena attiva il file resta in attesa di conferma umana.',
+      inputSchema: {
+        folderId: z.string().describe('Id della pratica (vedi list_folders)'),
+        relPath: z
+          .string()
+          .min(1)
+          .describe('Percorso relativo dentro la pratica, es. "Ricerche/bozza.md"'),
+        content: z.string().min(1).describe('Contenuto testuale della bozza (con placeholder)'),
+        overwrite: z
+          .boolean()
+          .default(false)
+          .describe('Consenti la sovrascrittura di un file già esistente')
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    async ({ folderId, relPath, content, overwrite }) => {
+      try {
+        const out = registry.stageWrite(folderId, relPath, content, overwrite)
+        // Return SENZA PII: solo conteggi e pseudonimi (mai i valori reali).
+        // Nota: con placeholder ambigui (es. cognome condiviso da più persone) il
+        // valore reale NON è stato ripristinato → verifica manuale. Mai PII nel testo.
+        const ambiguityNote =
+          out.ambiguous.length > 0
+            ? ` Attenzione: ${out.ambiguous.length} segnaposto ambigui non risolti (verifica manuale): ${out.ambiguous.join(', ')}.`
+            : ''
+        const payload = {
+          saved: !out.staged,
+          staged: out.staged,
+          relPath: out.relPath,
+          rehydratedEntities: out.rehydratedCount,
+          ambiguousPlaceholders: out.ambiguous,
+          note:
+            (out.staged
+              ? 'In attesa di conferma umana prima del salvataggio definitivo.'
+              : 'Salvato.') + ambiguityNote
+        }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+          structuredContent: payload
+        }
+      } catch (err) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Scrittura non riuscita: ${err instanceof Error ? err.message : String(err)}`
+            }
+          ]
+        }
+      }
+    }
+  )
+
+  // ── Tool: create_folder ───────────────────────────────────────────────────
+  server.registerTool(
+    'anonymcp_create_folder',
+    {
+      title: 'Crea una sottocartella nella pratica',
+      description:
+        'Crea una sottocartella dentro una pratica (es. "Ricerche"). Idempotente. ' +
+        'Il percorso deve restare dentro la cartella della pratica.',
+      inputSchema: {
+        folderId: z.string().describe('Id della pratica (vedi list_folders)'),
+        relPath: z.string().min(1).describe('Sottocartella relativa, es. "Ricerche"')
+      },
+      annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ folderId, relPath }) => {
+      try {
+        const out = registry.createFolder(folderId, relPath)
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ created: true, ...out }, null, 2) }],
+          structuredContent: { created: true, ...out }
+        }
+      } catch (err) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Creazione cartella non riuscita: ${err instanceof Error ? err.message : String(err)}`
+            }
+          ]
+        }
+      }
+    }
+  )
+
   log.info('Server MCP costruito', {
     folders: config.folders.length,
     requireManualApproval: config.requireManualApproval

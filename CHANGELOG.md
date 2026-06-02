@@ -5,6 +5,19 @@ Tutte le modifiche rilevanti a questo progetto sono documentate qui.
 Il formato segue [Keep a Changelog](https://keepachangelog.com/it/1.1.0/)
 e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 
+## [Unreleased]
+
+### Aggiunto — Fase 2 / M-Write (scrittura LLM→cartella)
+- Strumenti MCP `anonymcp_write_document` e `anonymcp_create_folder`: l'LLM salva bozze
+  testuali nella pratica senza toccare il disco. La bozza è **re-idratata** (pseudonimo→reale)
+  in locale prima di scrivere; con `requireManualApproval` va in staging e attende conferma
+  umana via TUI. Formati testuali (`.md/.txt/.tex/.csv/.json/.xml/.html`). Vedi **ADR-0005**.
+- **Consolidamento entità (id interno)**: la co-reference ("Mario Rossi" e il successivo
+  "Rossi") condivide un id-entità interno (RAM-only, mai esposto), così la re-idratazione la
+  collassa correttamente e usa la forma canonica. L'omonimia di iniziali resta distinta; il
+  cognome condiviso da più persone NON viene ri-idratato (fail-safe + segnalazione). Il
+  `canonical` è persistito nel dizionario di pratica come campo opzionale retrocompatibile.
+
 ## [0.1.0] - 2026-06-02
 
 Prima release pubblica — **Fase 1** (server MCP stdio standalone, beta).
