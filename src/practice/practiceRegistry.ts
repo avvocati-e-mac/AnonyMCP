@@ -669,7 +669,7 @@ export class PracticeRegistry {
       else if (doc.status === 'review_required' || doc.status === 'quarantined') reviewRequired++
       if (doc.result?.sensitive) sensitiveDocs++
       if (this.isExposable(doc)) exposed++
-      if (doc.status === 'approved' && doc.result?.sensitive && !this.allowCloudForSensitive) {
+      if (doc.result?.sensitive && !this.isExposable(doc)) {
         cloudBlockedSensitiveDocs++
       }
     }

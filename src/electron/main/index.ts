@@ -7,7 +7,9 @@ import {
   type IpcMainInvokeEvent,
   type OpenDialogOptions
 } from 'electron'
-import { join } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { join, resolve } from 'node:path'
 import { loadConfig, saveConfig } from '../../config.js'
 import { LocalReviewService } from '../../app/reviewService.js'
 import { buildExposedFolders, discoverPracticeFolders, type FolderImportMode } from '../../app/folderImport.js'
@@ -100,6 +102,15 @@ function configPath(): string {
   return process.env.ANONYMCP_CONFIG ?? 'anonymcp.config.json'
 }
 
+function absoluteConfigPath(): string {
+  return resolve(configPath())
+}
+
+function configHash(path: string): string | undefined {
+  if (!existsSync(path)) return undefined
+  return createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 12)
+}
+
 function localReviewService(): LocalReviewService {
   const path = configPath()
   if (serviceCache?.configPath === path) return serviceCache.service
@@ -148,18 +159,24 @@ function clearServiceCache(): void {
 }
 
 function readAppStatus(): AppStatus {
+  const path = absoluteConfigPath()
   try {
     const config = loadConfig(configPath())
     return AppStatusSchema.parse({
       configPresent: true,
       configuredFolders: config.folders.length,
-      mcpReady: config.folders.length > 0
+      mcpReady: config.folders.length > 0,
+      configPath: path,
+      configHash: configHash(path),
+      folderIds: config.folders.map((folder) => folder.id)
     })
   } catch (err) {
     return AppStatusSchema.parse({
       configPresent: false,
       configuredFolders: 0,
       mcpReady: false,
+      configPath: path,
+      folderIds: [],
       configError: err instanceof Error ? err.message : String(err)
     })
   }

@@ -25,6 +25,15 @@ describe('Electron IPC contract', () => {
   })
 
   it('rejects unexpected fields in app status payloads', () => {
+    const status = AppStatusSchema.parse({
+      configPresent: true,
+      configuredFolders: 2,
+      mcpReady: true,
+      configPath: '/Studio/anonymcp.config.json',
+      configHash: '91ab42ff0011',
+      folderIds: ['1', '100F']
+    })
+    expect(status.folderIds).toEqual(['1', '100F'])
     expect(() =>
       AppStatusSchema.parse({
         configPresent: true,

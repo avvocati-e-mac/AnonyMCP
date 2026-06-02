@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -422,6 +422,39 @@ function sensitivityLabel(doc: Pick<ReviewDocumentListItem, 'sensitive' | 'sensi
   return doc.sensitive ? 'Sensibile' : 'Non sensibile'
 }
 
+function compactPath(path: string | undefined): string {
+  if (!path) return 'non disponibile'
+  const parts = path.split(/[\\/]/).filter(Boolean)
+  return parts.slice(-2).join('/') || path
+}
+
+type ActivityFilter = 'all' | 'review' | 'sensitive' | 'writes' | 'approved'
+
+const ACTIVITY_FILTERS: { id: ActivityFilter; label: string }[] = [
+  { id: 'all', label: 'Tutti' },
+  { id: 'review', label: 'Da review' },
+  { id: 'sensitive', label: 'Sensibili' },
+  { id: 'writes', label: 'Bozze' },
+  { id: 'approved', label: 'Approvati' }
+]
+
+interface ActivityRow {
+  kind: 'document' | 'write'
+  key: string
+  folderId: string
+  docId?: string
+  relPath?: string
+  label: string
+  document: string
+  review: string
+  sensitivity: string
+  cloud: string
+  isReview: boolean
+  isSensitive: boolean
+  isApproved: boolean
+  action: string
+}
+
 const ENTITY_TYPES: ReviewDocumentDetail['entities'][number]['type'][] = [
   'PERSONA',
   'ORGANIZZAZIONE',
@@ -440,6 +473,79 @@ const ENTITY_TYPES: ReviewDocumentDetail['entities'][number]['type'][] = [
 
 function entityKey(entity: ReviewDocumentDetail['entities'][number]): string {
   return JSON.stringify([entity.type, entity.originalText, entity.pseudonym, entity.source])
+}
+
+function entityColorClass(type: ReviewDocumentDetail['entities'][number]['type']): string {
+  switch (type) {
+    case 'PERSONA':
+      return 'bg-blue-100 text-blue-900 ring-blue-200'
+    case 'ORGANIZZAZIONE':
+      return 'bg-violet-100 text-violet-900 ring-violet-200'
+    case 'LUOGO':
+    case 'LUOGO_NASCITA':
+      return 'bg-green-100 text-green-900 ring-green-200'
+    case 'CODICE_FISCALE':
+    case 'PARTITA_IVA':
+    case 'NUMERO_DOCUMENTO':
+    case 'NUMERO_RUOLO':
+    case 'PROTOCOLLO':
+      return 'bg-red-100 text-red-900 ring-red-200'
+    case 'IBAN':
+      return 'bg-cyan-100 text-cyan-900 ring-cyan-200'
+    case 'EMAIL':
+    case 'PEC':
+    case 'TELEFONO':
+      return 'bg-orange-100 text-orange-900 ring-orange-200'
+    case 'INDIRIZZO':
+      return 'bg-indigo-100 text-indigo-900 ring-indigo-200'
+    default:
+      return 'bg-slate-100 text-slate-900 ring-slate-200'
+  }
+}
+
+function highlightText(
+  text: string,
+  entities: ReviewDocumentDetail['entities'],
+  target: 'original' | 'pseudonym'
+): ReactNode[] {
+  const matches: {
+    start: number
+    end: number
+    entity: ReviewDocumentDetail['entities'][number]
+  }[] = []
+
+  for (const entity of entities) {
+    const needle = target === 'original' ? entity.originalText : entity.pseudonym
+    if (needle.length < 2) continue
+    let index = text.indexOf(needle)
+    while (index !== -1) {
+      matches.push({ start: index, end: index + needle.length, entity })
+      index = text.indexOf(needle, index + needle.length)
+    }
+  }
+
+  matches.sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start))
+  const out: ReactNode[] = []
+  let cursor = 0
+  let key = 0
+
+  for (const match of matches) {
+    if (match.start < cursor) continue
+    if (match.start > cursor) out.push(text.slice(cursor, match.start))
+    out.push(
+      <mark
+        key={`${match.entity.type}-${key++}`}
+        className={`rounded px-1 ring-1 ${entityColorClass(match.entity.type)}`}
+        title={`${match.entity.type} -> ${match.entity.pseudonym}`}
+      >
+        {text.slice(match.start, match.end)}
+      </mark>
+    )
+    cursor = match.end
+  }
+
+  if (cursor < text.length) out.push(text.slice(cursor))
+  return out
 }
 
 function ReviewDetailPanel({
@@ -471,6 +577,22 @@ function ReviewDetailPanel({
   onApprove: () => void
   onClose: () => void
 }): React.JSX.Element {
+  const originalRef = useRef<HTMLDivElement | null>(null)
+  const pseudonymRef = useRef<HTMLDivElement | null>(null)
+  const syncingRef = useRef(false)
+
+  function syncScroll(source: HTMLDivElement, target: HTMLDivElement | null): void {
+    if (!target || syncingRef.current) return
+    syncingRef.current = true
+    const maxSource = source.scrollHeight - source.clientHeight
+    const maxTarget = target.scrollHeight - target.clientHeight
+    const ratio = maxSource > 0 ? source.scrollTop / maxSource : 0
+    target.scrollTop = ratio * Math.max(maxTarget, 0)
+    window.setTimeout(() => {
+      syncingRef.current = false
+    }, 0)
+  }
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white">
       <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
@@ -492,15 +614,23 @@ function ReviewDetailPanel({
       <div className="grid gap-4 p-5 lg:grid-cols-2">
         <div>
           <div className="mb-2 text-sm font-medium text-slate-700">Originale locale</div>
-          <pre className="h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-800">
-            {detail.originalText}
-          </pre>
+          <div
+            ref={originalRef}
+            onScroll={(event) => syncScroll(event.currentTarget, pseudonymRef.current)}
+            className="h-96 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800"
+          >
+            {highlightText(detail.originalText, detail.entities, 'original')}
+          </div>
         </div>
         <div>
           <div className="mb-2 text-sm font-medium text-slate-700">Pseudonimizzato</div>
-          <pre className="h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-800">
-            {detail.anonymizedText}
-          </pre>
+          <div
+            ref={pseudonymRef}
+            onScroll={(event) => syncScroll(event.currentTarget, originalRef.current)}
+            className="h-96 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800"
+          >
+            {highlightText(detail.anonymizedText, detail.entities, 'pseudonym')}
+          </div>
         </div>
       </div>
 
@@ -510,7 +640,7 @@ function ReviewDetailPanel({
             <h3 className="text-sm font-medium text-slate-900">Entita' da confermare</h3>
             <span className="text-xs text-slate-500">Rischio residuo {Math.round(detail.residualRisk * 100)}%</span>
           </div>
-          <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
+          <div className="max-h-[32rem] overflow-auto rounded-md border border-slate-200">
             {detail.entities.length ? (
               detail.entities.map((entity) => {
                 const key = entityKey(entity)
@@ -523,9 +653,14 @@ function ReviewDetailPanel({
                       className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-slate-900">{entity.originalText}</span>
+                      <span className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className={`rounded px-1.5 py-0.5 text-xs ring-1 ${entityColorClass(entity.type)}`}>
+                          {entity.type}
+                        </span>
+                        <span className="block truncate text-sm font-medium text-slate-900">{entity.originalText}</span>
+                      </span>
                       <span className="mt-1 block text-xs text-slate-500">
-                        {entity.type} - {entity.pseudonym} - {entity.source} - {entity.occurrences} occ.
+                        {entity.pseudonym} - {entity.source} - {entity.occurrences} occ.
                       </span>
                     </span>
                   </label>
@@ -538,7 +673,7 @@ function ReviewDetailPanel({
         </div>
 
         <div className="space-y-4">
-          <div>
+          <div className="rounded-lg border border-slate-200 p-3">
             <h3 className="text-sm font-medium text-slate-900">Aggiungi entita'</h3>
             <input
               value={manualText}
@@ -566,14 +701,17 @@ function ReviewDetailPanel({
             </button>
           </div>
 
-          <div>
+          <div className="rounded-lg border border-slate-200 p-3">
             <h3 className="text-sm font-medium text-slate-900">Sensibilita'</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              AnonyMCP suggerisce; la decisione finale sul contesto e' dell'avvocato.
+            </p>
             <div className="mt-2 grid gap-2">
               <button type="button" onClick={() => onSetSensitivity('sensitive')} className="rounded-md border border-amber-300 px-3 py-2 text-left text-sm text-amber-900 hover:bg-amber-50">
-                Sensibile
+                Sensibile - blocca cloud
               </button>
               <button type="button" onClick={() => onSetSensitivity('not_sensitive')} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
-                Non sensibile
+                Non sensibile nel contesto
               </button>
               <button type="button" onClick={() => onSetSensitivity(null)} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
                 Usa suggerimento
@@ -675,6 +813,8 @@ function Dashboard({
   const [manualType, setManualType] = useState<ReviewDocumentDetail['entities'][number]['type']>('PERSONA')
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
+  const [activitySearch, setActivitySearch] = useState('')
   const totals = dashboard?.totals
   const cards = useMemo(
     () => [
@@ -685,6 +825,76 @@ function Dashboard({
     ],
     [status.configuredFolders, totals]
   )
+  const activityRows = useMemo(() => {
+    const rows: ActivityRow[] = reviewDocs.map((doc) => ({
+      kind: 'document' as const,
+      key: `doc-${doc.folderId}-${doc.docId}`,
+      folderId: doc.folderId,
+      docId: doc.docId,
+      label: doc.label,
+      document: doc.fileName,
+      review: statusLabel(doc.status),
+      sensitivity: sensitivityLabel(doc),
+      cloud: doc.exposable ? 'Disponibile' : doc.sensitive || doc.sensitiveSuggested ? 'Bloccato' : 'Non disponibile',
+      isReview: doc.status !== 'approved',
+      isSensitive: doc.sensitive || doc.sensitiveSuggested || doc.sensitivityOverride === 'sensitive',
+      isApproved: doc.status === 'approved',
+      action: doc.sensitive || doc.sensitiveSuggested ? 'Valuta' : 'Apri'
+    }))
+    const knownDocs = new Set(rows.map((row) => `${row.folderId}-${row.docId}`))
+    for (const doc of sensitiveDocs) {
+      if (knownDocs.has(`${doc.folderId}-${doc.docId}`)) continue
+      rows.push({
+        kind: 'document',
+        key: `sensitive-${doc.folderId}-${doc.docId}`,
+        folderId: doc.folderId,
+        docId: doc.docId,
+        label: doc.label,
+        document: doc.fileName,
+        review: statusLabel(doc.status),
+        sensitivity: sensitivityLabel(doc),
+        cloud: 'Bloccato',
+        isReview: doc.status !== 'approved',
+        isSensitive: true,
+        isApproved: doc.status === 'approved',
+        action: 'Valuta'
+      })
+    }
+    for (const write of pendingWrites) {
+      rows.push({
+        kind: 'write',
+        key: `write-${write.folderId}-${write.relPath}`,
+        folderId: write.folderId,
+        relPath: write.relPath,
+        label: write.label,
+        document: write.fileName,
+        review: 'Bozza LLM',
+        sensitivity: 'Da confermare',
+        cloud: 'Locale',
+        isReview: false,
+        isSensitive: false,
+        isApproved: false,
+        action: 'Conferma bozza'
+      })
+    }
+    return rows
+  }, [pendingWrites, reviewDocs, sensitiveDocs])
+  const filteredActivityRows = useMemo(() => {
+    const needle = activitySearch.trim().toLowerCase()
+    return activityRows
+      .filter((row) => {
+        if (activityFilter === 'review' && !row.isReview) return false
+        if (activityFilter === 'sensitive' && !row.isSensitive) return false
+        if (activityFilter === 'writes' && row.kind !== 'write') return false
+        if (activityFilter === 'approved' && !row.isApproved) return false
+        if (!needle) return true
+        return [row.label, row.document, row.review, row.sensitivity, row.cloud]
+          .join(' ')
+          .toLowerCase()
+          .includes(needle)
+      })
+      .slice(0, 30)
+  }, [activityFilter, activityRows, activitySearch])
 
   async function openReviewDocument(folderId: string, docId: string): Promise<void> {
     setActionBusy(true)
@@ -815,6 +1025,34 @@ function Dashboard({
     }
   }
 
+  if (detail) {
+    return (
+      <main className="flex-1 bg-slate-50 p-6">
+        <div className="mx-auto max-w-7xl">
+          <ReviewDetailPanel
+            detail={detail}
+            selectedKeys={selectedKeys}
+            manualText={manualText}
+            manualType={manualType}
+            actionBusy={actionBusy}
+            actionError={actionError}
+            onToggleEntity={toggleEntity}
+            onManualTextChange={setManualText}
+            onManualTypeChange={setManualType}
+            onAddManualEntity={() => void addManualEntity()}
+            onSetSensitivity={(decision) => void setSensitivity(decision)}
+            onApprove={() => void approveDetail()}
+            onClose={() => {
+              setActiveRef(null)
+              setDetail(null)
+              setActionError(null)
+            }}
+          />
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="flex-1 bg-slate-50 p-6">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -825,6 +1063,23 @@ function Dashboard({
               <p className="mt-1 text-sm text-slate-600">
                 Controlla cosa blocca l'uso del LLM cloud e quali attivita' richiedono una decisione.
               </p>
+              <div className="mt-4 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
+                <div>
+                  <span className="font-medium text-slate-700">Config UI</span>
+                  <div className="mt-1 truncate">{compactPath(status.configPath)}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-slate-700">Hash config</span>
+                  <div className="mt-1">{status.configHash ?? 'non disponibile'}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-slate-700">Folder MCP locali</span>
+                  <div className="mt-1 truncate">{status.folderIds?.length ? status.folderIds.join(', ') : 'nessuno'}</div>
+                </div>
+              </div>
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Verifica il client LLM dopo ogni modifica: la UI puo' usare una config diversa dal server MCP gia' collegato.
+              </div>
             </div>
             <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-sm text-green-700">
               <CheckCircle2 size={15} />
@@ -893,28 +1148,6 @@ function Dashboard({
           </div>
         </section>
 
-        {detail ? (
-          <ReviewDetailPanel
-            detail={detail}
-            selectedKeys={selectedKeys}
-            manualText={manualText}
-            manualType={manualType}
-            actionBusy={actionBusy}
-            actionError={actionError}
-            onToggleEntity={toggleEntity}
-            onManualTextChange={setManualText}
-            onManualTypeChange={setManualType}
-            onAddManualEntity={() => void addManualEntity()}
-            onSetSensitivity={(decision) => void setSensitivity(decision)}
-            onApprove={() => void approveDetail()}
-            onClose={() => {
-              setActiveRef(null)
-              setDetail(null)
-              setActionError(null)
-            }}
-          />
-        ) : null}
-
         {writeDetail ? (
           <PendingWritePanel
             detail={writeDetail}
@@ -928,102 +1161,95 @@ function Dashboard({
           />
         ) : null}
 
-        <section className="grid gap-4 xl:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-medium text-slate-900">Documenti da review</h2>
+        <section className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div>
+              <h2 className="font-medium text-slate-900">Attivita'</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Documenti, sensibilita' e bozze in una lista compatta.
+              </p>
             </div>
-            <div className="max-h-80 overflow-auto">
-              {reviewDocs.length ? (
-                reviewDocs.slice(0, 8).map((doc) => (
-                  <div key={`${doc.folderId}-${doc.docId}`} className="border-b border-slate-100 px-5 py-3 last:border-b-0">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-slate-900">{doc.fileName}</div>
-                        <div className="mt-1 text-xs text-slate-500">{doc.label} - {statusLabel(doc.status)}</div>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
-                          {sensitivityLabel(doc)}
+            <input
+              value={activitySearch}
+              onChange={(event) => setActivitySearch(event.target.value)}
+              placeholder="Cerca documento o pratica"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:w-64"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-3">
+            {ACTIVITY_FILTERS.map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setActivityFilter(filter.id)}
+                className={[
+                  'rounded-md px-3 py-1.5 text-sm',
+                  activityFilter === filter.id
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+                ].join(' ')}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <div className="overflow-auto">
+            <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-medium uppercase text-slate-500">
+                <tr>
+                  <th className="px-5 py-3">Pratica</th>
+                  <th className="px-5 py-3">Documento</th>
+                  <th className="px-5 py-3">Review</th>
+                  <th className="px-5 py-3">Sensibilita'</th>
+                  <th className="px-5 py-3">Cloud</th>
+                  <th className="px-5 py-3 text-right">Azione</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredActivityRows.length ? (
+                  filteredActivityRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-900">{row.label}</td>
+                      <td className="max-w-xs truncate px-5 py-3 text-slate-800">{row.document}</td>
+                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.review}</td>
+                      <td className="whitespace-nowrap px-5 py-3">
+                        <span className={[
+                          'rounded-full px-2 py-1 text-xs',
+                          row.isSensitive ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'
+                        ].join(' ')}>
+                          {row.sensitivity}
                         </span>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.cloud}</td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right">
                         <button
                           type="button"
-                          onClick={() => void openReviewDocument(doc.folderId, doc.docId)}
-                          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                          onClick={() => {
+                            if (row.kind === 'write' && row.relPath) {
+                              void openPendingWrite(row.folderId, row.relPath)
+                            } else if (row.docId) {
+                              void openReviewDocument(row.folderId, row.docId)
+                            }
+                          }}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                         >
-                          Apri
+                          {row.action}
                         </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-5 py-8 text-sm text-slate-500">Nessun documento in coda.</div>
-              )}
-            </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-sm text-slate-500">
+                      Nessuna attivita' per il filtro selezionato.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-medium text-slate-900">Documenti sensibili bloccati</h2>
-            </div>
-            <div className="max-h-80 overflow-auto">
-              {sensitiveDocs.length ? (
-                sensitiveDocs.slice(0, 8).map((doc) => (
-                  <div key={`${doc.folderId}-${doc.docId}`} className="border-b border-slate-100 px-5 py-3 last:border-b-0">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-slate-900">{doc.fileName}</div>
-                        <div className="mt-1 truncate text-xs text-slate-500">{doc.label} - {doc.practicePath}</div>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
-                        <span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-800">
-                          {doc.sensitivityOverride === 'sensitive' ? 'Deciso sensibile' : 'Bloccato'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void openReviewDocument(doc.folderId, doc.docId)}
-                          className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                        >
-                          Valuta
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-5 py-8 text-sm text-slate-500">Nessun documento sensibile bloccato.</div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="font-medium text-slate-900">Bozze LLM in attesa</h2>
-            </div>
-            <div className="max-h-80 overflow-auto">
-              {pendingWrites.length ? (
-                pendingWrites.slice(0, 8).map((write) => (
-                  <div key={`${write.folderId}-${write.relPath}`} className="border-b border-slate-100 px-5 py-3 last:border-b-0">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-slate-900">{write.fileName}</div>
-                        <div className="mt-1 truncate text-xs text-slate-500">{write.label} - {write.relPath}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void openPendingWrite(write.folderId, write.relPath)}
-                        className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                      >
-                        Apri
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-5 py-8 text-sm text-slate-500">Nessuna bozza in attesa.</div>
-              )}
-            </div>
+          <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+            Mostrate {filteredActivityRows.length} di {activityRows.length} attivita'. Usa i filtri per restringere la lista.
           </div>
         </section>
       </div>

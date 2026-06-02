@@ -46,6 +46,9 @@ export const AppStatusSchema = z.object({
   configPresent: z.boolean(),
   configuredFolders: z.number().int().nonnegative(),
   mcpReady: z.boolean(),
+  configPath: z.string().optional(),
+  configHash: z.string().optional(),
+  folderIds: z.array(z.string()).optional(),
   configError: z.string().optional()
 }).strict()
 

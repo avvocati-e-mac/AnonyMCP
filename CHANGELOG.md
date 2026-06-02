@@ -30,6 +30,13 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
   più cartelle e scelta alternativa tramite finestra di sistema.
 - Review locale delle bozze LLM in staging: la UI mostra la bozza re-idratata solo in locale e
   consente la promozione esplicita nella cartella finale della pratica.
+- La dashboard Electron mostra percorso/hash della configurazione e ID pratiche locali, cosi'
+  l'avvocato puo' accorgersi se l'app e il client MCP esterno stanno leggendo configurazioni
+  diverse.
+- La dashboard usa una tabella attivita' compatta con filtri e ricerca per documenti da review,
+  documenti sensibili bloccati e bozze LLM, riducendo spazio verticale sprecato.
+- La review documento e' ora una schermata separata con evidenziazione colorata delle entita',
+  preview originale/pseudonimizzata affiancate e scroll sincronizzato.
 
 ### Aggiunto — Fase 2 / M-Write (scrittura LLM→cartella)
 - Strumenti MCP `anonymcp_write_document` e `anonymcp_create_folder`: l'LLM salva bozze
@@ -52,6 +59,8 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
   `overwrite=true` e non sovrascrive file finali creati dopo lo staging.
 - La TUI applica davvero le entità confermate/escluse dall'utente prima di approvare.
 - La config avvisa anche se il `folderId`, non solo il `label`, sembra contenere nomi delle parti.
+- Il contatore dei documenti sensibili bloccati conta tutti i documenti sensibili non esponibili
+  al cloud, non solo quelli gia' approvati.
 
 ## [0.1.0] - 2026-06-02
 
