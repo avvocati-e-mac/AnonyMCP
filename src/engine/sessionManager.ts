@@ -28,9 +28,33 @@ const STRUCTURED_PREFIX: Partial<Record<EntityType, string>> = {
   PROTOCOLLO: 'PROT'
 }
 
+/**
+ * Esito di una ri-idratazione (pseudonimo→reale). Uso LOCALE lato server,
+ * mai esposto via MCP. Vedi ADR-0005.
+ */
+export interface RehydrationResult {
+  /** Testo con i pseudonimi noti sostituiti dai valori reali. */
+  text: string
+  /** Numero di pseudonimi distinti effettivamente sostituiti. */
+  substituted: number
+  /** Pseudonimi NON sostituiti perché ambigui (mappano a >1 originale). */
+  ambiguous: string[]
+}
+
 interface SessionEntry {
   pseudonym: string
   type: EntityType
+  /**
+   * Forma originale con le maiuscole reali (la chiave del dizionario è lowercase).
+   * Serve alla re-idratazione (pseudonimo→reale) per ripristinare il case corretto.
+   * Vedi ADR-0005. Uso LOCALE: mai esposta via MCP.
+   */
+  displayOriginal: string
+}
+
+/** Esegue l'escape dei metacaratteri regex in una stringa letterale. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /**
@@ -77,14 +101,19 @@ export class SessionManager {
 
   /** Restituisce (o crea) il pseudonimo per un testo originale. */
   getOrCreatePseudonym(originalText: string, type: EntityType): string {
-    const key = originalText.trim().toLowerCase()
+    const display = originalText.trim()
+    const key = display.toLowerCase()
     const existing = this.dictionary.get(key)
     if (existing) return existing.pseudonym
 
     // Coerenza cross-sessione: se l'hash è nella cache precaricata, riusa il pseudonimo.
     const fromCache = this.byHash.get(SessionManager.hashKey(originalText))
     if (fromCache) {
-      this.dictionary.set(key, { pseudonym: fromCache.pseudonym, type: fromCache.type })
+      this.dictionary.set(key, {
+        pseudonym: fromCache.pseudonym,
+        type: fromCache.type,
+        displayOriginal: display
+      })
       return fromCache.pseudonym
     }
 
@@ -110,7 +139,7 @@ export class SessionManager {
       }
     }
 
-    this.dictionary.set(key, { pseudonym, type })
+    this.dictionary.set(key, { pseudonym, type, displayOriginal: display })
     return pseudonym
   }
 
@@ -119,7 +148,8 @@ export class SessionManager {
    * pratica già approvata). Mantiene la coerenza tra sessioni senza ri-NER.
    */
   preload(originalText: string, pseudonym: string, type: EntityType): void {
-    this.dictionary.set(originalText.trim().toLowerCase(), { pseudonym, type })
+    const display = originalText.trim()
+    this.dictionary.set(display.toLowerCase(), { pseudonym, type, displayOriginal: display })
   }
 
   /**
@@ -195,6 +225,63 @@ export class SessionManager {
       byType[type] = (byType[type] ?? 0) + 1
     }
     return { totalEntries: this.dictionary.size, byType }
+  }
+
+  /**
+   * Costruisce on-demand la mappa inversa pseudonimo→originale dalla `dictionary`.
+   * Se uno stesso pseudonimo mappa a >1 originale distinto, è AMBIGUO e non sarà
+   * sostituito (la re-idratazione resta fail-safe: meglio lo pseudonimo che un
+   * valore sbagliato). Vedi ADR-0005. Uso LOCALE.
+   */
+  private buildInverseMap(): { unique: Map<string, string>; ambiguous: Set<string> } {
+    const originalsByPseudonym = new Map<string, Set<string>>()
+    for (const entry of this.dictionary.values()) {
+      const set = originalsByPseudonym.get(entry.pseudonym) ?? new Set<string>()
+      set.add(entry.displayOriginal)
+      originalsByPseudonym.set(entry.pseudonym, set)
+    }
+    const unique = new Map<string, string>()
+    const ambiguous = new Set<string>()
+    for (const [pseudonym, originals] of originalsByPseudonym) {
+      if (originals.size === 1) unique.set(pseudonym, [...originals][0]!)
+      else ambiguous.add(pseudonym)
+    }
+    return { unique, ambiguous }
+  }
+
+  /**
+   * Re-idrata un testo: sostituisce gli pseudonimi noti con i valori reali.
+   * Passaggio LOCALE lato server (es. prima di salvare una bozza dell'LLM su disco):
+   * NON è un tool MCP di de-anonimizzazione e il risultato non va mai esposto via MCP.
+   * Vedi ADR-0005.
+   *
+   * - Sostituisce gli pseudonimi più lunghi prima (es. "M. R. (2)" prima di "M. R.")
+   *   per non corrompere i prefissi condivisi.
+   * - I pseudonimi ambigui (→ più originali) NON vengono sostituiti e finiscono in `ambiguous`.
+   */
+  rehydrate(text: string): RehydrationResult {
+    const { unique, ambiguous } = this.buildInverseMap()
+    const pseudonyms = [...unique.keys()].sort((a, b) => b.length - a.length)
+
+    let result = text
+    let substituted = 0
+    for (const pseudonym of pseudonyms) {
+      const pattern = new RegExp(
+        `(?<![\\p{L}\\p{N}_])${escapeRegExp(pseudonym)}(?![\\p{L}\\p{N}_])`,
+        'gu'
+      )
+      let hit = false
+      result = result.replace(pattern, () => {
+        hit = true
+        return unique.get(pseudonym)!
+      })
+      if (hit) substituted++
+    }
+
+    const usedAmbiguous = [...ambiguous].filter((p) =>
+      new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(p)}(?![\\p{L}\\p{N}_])`, 'u').test(text)
+    )
+    return { text: result, substituted, ambiguous: usedAmbiguous }
   }
 
   /** Cancella e azzera la memoria (zeroization su chiusura sessione). */
