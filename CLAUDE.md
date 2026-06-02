@@ -135,6 +135,8 @@ src/
   config.ts     load/validate (Zod)     types.ts    tipi condivisi
   engine/       pseudonimizzazione (regex, sessionManager, anonymizer, legalStopWords)
   pipeline/     toMarkdown, metadataStripper, riskScorer, documentService
+  app/          servizi locali per UI Electron (review, import cartelle)
+  electron/     main/preload/renderer/shared per app desktop locale
   practice/     practiceStore (cache cifrata), practiceRegistry (stato/review), entityDictionary,
                 writeService + writeApprovalStore (M-Write: scrittura LLM→cartella, ADR-0005)
   search/       chunkIndex (BM25 su SQLite FTS5)
@@ -145,7 +147,9 @@ docs/adr/       Architecture Decision Records (decisioni vincolanti)
 docs/agent-guides/  guide di dettaglio (Tier-3)
 ```
 
-> Stato: Fase 1 + M-Write implementati (suite test verde). Inizio Fase 2 (vedi
-> [docs/ROADMAP-fase2.md](docs/ROADMAP-fase2.md); prossima milestone = app Electron). **Non**
-> ancora deployabile in produzione legale: vedi checklist Go/No-Go nel piano e i gap in
-> [threat-model](docs/agent-guides/threat-model.md).
+> Stato: Fase 1 + M-Write implementati (suite test verde). Fase 2 / Electron avviata e
+> prototipo locale integrato: dashboard, import cartelle, review documenti, override
+> sensibilita' e conferma bozze LLM in attesa (vedi [docs/ROADMAP-fase2.md](docs/ROADMAP-fase2.md)
+> e [docs/electron-app-design.md](docs/electron-app-design.md)). **Non** ancora deployabile in
+> produzione legale: restano gap Go/No-Go, packaging e ABI native module (`better-sqlite3`),
+> vedi piano e [threat-model](docs/agent-guides/threat-model.md).
