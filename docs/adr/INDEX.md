@@ -17,6 +17,7 @@ la direzione, si crea un nuovo ADR che fa `supersedes` del precedente.
 | [0003](0003-dictionary-plaintext.md) | Dizionario di pratica in testo chiaro (formato Anonimator) | storage | accepted | sì |
 | [0004](0004-practice-label-opaque.md) | Label/folderId pratica = numero opaco, mai nomi delle parti | security | accepted | sì |
 | [0005](0005-mcp-write-rehydration.md) | Scrittura MCP con re-idratazione locale e quarantena | security | accepted | sì |
+| [0006](0006-entity-consolidation-rehydration.md) | Consolidamento entità (id-entità interno) per la re-idratazione | security | accepted | sì |
 
 ## Come si legge un ADR
 

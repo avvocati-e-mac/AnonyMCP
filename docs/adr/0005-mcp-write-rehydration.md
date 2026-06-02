@@ -70,7 +70,9 @@ binari (.docx) il client genera il file da sé e lo invia in **base64** (zip). V
 
 # Conseguenze
 
-- `SessionManager` acquisisce `rehydrate()` + il campo `displayOriginal` (case reale).
+- `SessionManager` acquisisce `rehydrate()` + il campo `displayOriginal` (case reale). La
+  correttezza della re-idratazione su entità co-referenziate/omonime è governata da
+  [ADR-0006](0006-entity-consolidation-rehydration.md) (consolidamento via id-entità interno).
 - Nuovi `src/practice/writeService.ts` e `writeApprovalStore.ts`; nuovi metodi nel
   `PracticeRegistry` (`stageWrite`/`listPendingWrites`/`promoteWrite`, LOCALI, non tool MCP).
 - La TUI estende le azioni per promuovere le scritture in staging.

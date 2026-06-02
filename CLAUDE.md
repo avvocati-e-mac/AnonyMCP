@@ -81,7 +81,7 @@ una decisione ADR esistente è un errore critico.
 - **Scrittura LLM→cartella (M-Write)**: l'LLM non tocca il disco; l'MCP salva le bozze
   **re-idratate** (pseudonimo→reale) con un passaggio LOCALE, mai un tool di de-anon; pathGuard
   + quarantena/staging; return senza PII; co-reference risolta via id-entità interno, ambiguità
-  fail-safe (ADR-005). Solo formati testuali (binari = milestone futura).
+  fail-safe (ADR-005, consolidamento entità in ADR-006). Solo formati testuali (binari = futura).
 
 ## Sviluppo con assistenti CLI + commit atomici
 - **Capisci lo SCOPO prima di modificare.** Prima di riscrivere/semplificare qualcosa,
