@@ -291,23 +291,53 @@ export class SessionManager {
   }
 
   /**
-   * Costruisce on-demand la mappa inversa pseudonimo→originale dalla `dictionary`.
-   * Se uno stesso pseudonimo mappa a >1 originale distinto, è AMBIGUO e non sarà
-   * sostituito (la re-idratazione resta fail-safe: meglio lo pseudonimo che un
-   * valore sbagliato). Vedi ADR-0005. Uso LOCALE.
+   * Costruisce on-demand la mappa inversa pseudonimo→valore-reale dalla `dictionary`.
+   *
+   * Criterio di unicità (entityId-aware, vedi ADR-0005):
+   *  - se le entry di uno pseudonimo hanno un `entityId`, l'unicità è sul numero di
+   *    entityId DISTINTI: 1 solo entityId = stessa entità (co-reference) → unico, e si
+   *    ri-idrata con la forma CANONICA (longest mention). >1 entityId = entità diverse
+   *    con stesse iniziali (omonimia) → AMBIGUO.
+   *  - per le entry senza entityId (strutturate: CF/IBAN; o caricate via preload),
+   *    fallback al criterio sul `displayOriginal` distinto.
+   * Gli pseudonimi ambigui NON vengono sostituiti (fail-safe: meglio lo pseudonimo che
+   * un nome sbagliato su un atto). Uso LOCALE, mai esposto via MCP.
    */
   private buildInverseMap(): { unique: Map<string, string>; ambiguous: Set<string> } {
-    const originalsByPseudonym = new Map<string, Set<string>>()
+    // Per ogni pseudonimo raccoglie: entityId distinti, valori-reali candidati.
+    const byPseudonym = new Map<
+      string,
+      { entityIds: Set<string>; values: Set<string>; canonical?: string }
+    >()
     for (const entry of this.dictionary.values()) {
-      const set = originalsByPseudonym.get(entry.pseudonym) ?? new Set<string>()
-      set.add(entry.displayOriginal)
-      originalsByPseudonym.set(entry.pseudonym, set)
+      const agg = byPseudonym.get(entry.pseudonym) ?? {
+        entityIds: new Set<string>(),
+        values: new Set<string>()
+      }
+      if (entry.entityId) {
+        agg.entityIds.add(entry.entityId)
+        // Il valore di ri-idratazione preferito è la forma canonica del gruppo.
+        if (entry.canonical) agg.canonical = entry.canonical
+      }
+      agg.values.add(entry.displayOriginal)
+      byPseudonym.set(entry.pseudonym, agg)
     }
+
     const unique = new Map<string, string>()
     const ambiguous = new Set<string>()
-    for (const [pseudonym, originals] of originalsByPseudonym) {
-      if (originals.size === 1) unique.set(pseudonym, [...originals][0]!)
-      else ambiguous.add(pseudonym)
+    for (const [pseudonym, agg] of byPseudonym) {
+      if (agg.entityIds.size > 0) {
+        // Entry con identità: una sola entità → unico (usa il canonical).
+        if (agg.entityIds.size === 1) {
+          unique.set(pseudonym, agg.canonical ?? [...agg.values][0]!)
+        } else {
+          ambiguous.add(pseudonym)
+        }
+      } else if (agg.values.size === 1) {
+        unique.set(pseudonym, [...agg.values][0]!)
+      } else {
+        ambiguous.add(pseudonym)
+      }
     }
     return { unique, ambiguous }
   }

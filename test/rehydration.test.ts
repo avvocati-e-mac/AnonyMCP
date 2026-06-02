@@ -81,4 +81,43 @@ describe('SessionManager.rehydrate', () => {
     expect(s.getOrCreatePseudonym('Rossi', 'PERSONA')).toBe('M. R.')
     expect(s.getOrCreatePseudonym('Mario Rossi', 'PERSONA')).toBe('M. R.')
   })
+
+  // (a) co-reference: stessa entità → collassa, ri-idrata alla forma canonica.
+  it('(a) co-reference: "M. R." ri-idratato al nome completo anche se viene da "Rossi"', () => {
+    const s = new SessionManager()
+    s.getOrCreatePseudonym('Mario Rossi', 'PERSONA')
+    s.linkCoreference('Rossi', 'Mario Rossi', 'PERSONA')
+    const out = s.rehydrate('La parte M. R. eccepisce.')
+    expect(out.text).toBe('La parte Mario Rossi eccepisce.')
+    expect(out.substituted).toBe(1)
+    expect(out.ambiguous).toEqual([])
+  })
+
+  // (b) omonimia vera: entità diverse, stesse iniziali → pseudonimi distinti, entrambi risolti.
+  it('(b) omonimia: "M. R." e "M. R. (2)" ri-idratati ai nomi giusti', () => {
+    const s = new SessionManager()
+    expect(s.getOrCreatePseudonym('Mario Rossi', 'PERSONA')).toBe('M. R.')
+    expect(s.getOrCreatePseudonym('Marco Russo', 'PERSONA')).toBe('M. R. (2)')
+    const out = s.rehydrate('M. R. (2) contro M. R. oggi')
+    expect(out.text).toBe('Marco Russo contro Mario Rossi oggi')
+    expect(out.substituted).toBe(2)
+    expect(out.ambiguous).toEqual([])
+  })
+
+  // (e) pseudonimo inventato dall'LLM (mai in sessione) → non sostituito, non ambiguo.
+  it('(e) pseudonimo inventato dall\'LLM resta invariato', () => {
+    const s = new SessionManager()
+    s.getOrCreatePseudonym('Mario Rossi', 'PERSONA')
+    const out = s.rehydrate('Riferimento a Z. Q. mai visto prima.')
+    expect(out.text).toBe('Riferimento a Z. Q. mai visto prima.')
+    expect(out.ambiguous).toEqual([])
+  })
+
+  // (f) ADR-004: lo pseudonimo non contiene PII oltre alle iniziali (nessun hash contenutistico).
+  it('(f) lo pseudonimo PERSONA è solo iniziali, senza suffissi derivati dal nome', () => {
+    const s = new SessionManager()
+    expect(s.getOrCreatePseudonym('Mario Rossi', 'PERSONA')).toBe('M. R.')
+    // niente hash/token derivato dal nome reale
+    expect(s.getOrCreatePseudonym('Mario Rossi', 'PERSONA')).not.toMatch(/rossi|mario/i)
+  })
 })
