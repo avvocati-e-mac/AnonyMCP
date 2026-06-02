@@ -115,7 +115,8 @@ src/
   config.ts     load/validate (Zod)     types.ts    tipi condivisi
   engine/       pseudonimizzazione (regex, sessionManager, anonymizer, legalStopWords)
   pipeline/     toMarkdown, metadataStripper, riskScorer, documentService
-  practice/     practiceStore (cache cifrata), practiceRegistry (stato/review), entityDictionary
+  practice/     practiceStore (cache cifrata), practiceRegistry (stato/review), entityDictionary,
+                writeService + writeApprovalStore (M-Write: scrittura LLM→cartella, ADR-0005)
   search/       chunkIndex (BM25 su SQLite FTS5)
   tui/          review TUI Ink (Fase 1): entityColors, highlight, reviewApp
   util/         logger (stderr), crypto (AES-GCM/HMAC), pathGuard
@@ -124,5 +125,7 @@ docs/adr/       Architecture Decision Records (decisioni vincolanti)
 docs/agent-guides/  guide di dettaglio (Tier-3)
 ```
 
-> Stato: Fase 1 implementata (141 test verdi). **Non** ancora deployabile in produzione legale:
-> vedi checklist Go/No-Go nel piano e i gap in [threat-model](docs/agent-guides/threat-model.md).
+> Stato: Fase 1 + M-Write implementati (206 test verdi). Inizio Fase 2 (vedi
+> [docs/ROADMAP-fase2.md](docs/ROADMAP-fase2.md); prossima milestone = app Electron). **Non**
+> ancora deployabile in produzione legale: vedi checklist Go/No-Go nel piano e i gap in
+> [threat-model](docs/agent-guides/threat-model.md).

@@ -176,9 +176,11 @@ e [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 - **Fase 1 (questo repo)** — server MCP stdio standalone, cartelle configurate a mano,
   documenti testuali (`.txt`/`.md`). **Beta: non ancora deployabile in produzione legale**
   (vedi la checklist Go/No-Go e [`threat-model`](docs/agent-guides/threat-model.md)).
-- **Fase 2** — app desktop **Electron** (evoluzione di Anonimator) con UI di consenso, log
-  live, parser PDF/DOCX/OCR e NER legale: pensata per avvocati non tecnici, distribuita
-  come app cliccabile per macOS (Intel/ARM), Windows e Linux.
+- **Fase 2** (in corso) — già implementato **M-Write** (scrittura LLM→cartella con
+  re-idratazione, vedi sopra). Prossime tappe: app desktop **Electron** (evoluzione di
+  Anonimator) con UI di consenso/approvazione, log live, parser PDF/DOCX/OCR e NER legale,
+  pensata per avvocati non tecnici e distribuita per macOS (Intel/ARM), Windows e Linux.
+  Dettaglio in [`docs/ROADMAP-fase2.md`](docs/ROADMAP-fase2.md).
 
 Le modifiche di ogni versione sono in [`CHANGELOG.md`](./CHANGELOG.md).
 
