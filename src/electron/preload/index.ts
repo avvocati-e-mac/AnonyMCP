@@ -7,6 +7,10 @@ import {
   FolderImportResultSchema,
   IPC_CHANNELS,
   ManualEntityRequestSchema,
+  PendingWriteDetailSchema,
+  PendingWriteListRequestSchema,
+  PendingWriteListSchema,
+  PendingWriteRequestSchema,
   ReviewApplySelectionRequestSchema,
   ReviewDocumentDetailSchema,
   ReviewDocumentRequestSchema,
@@ -23,6 +27,8 @@ import {
   type DashboardSummary,
   type FolderImportMode,
   type FolderImportResult,
+  type PendingWriteDetail,
+  type PendingWriteItem,
   type ReviewDocumentDetail,
   type ReviewDocumentListItem,
   type ReviewEntity,
@@ -89,6 +95,21 @@ const api: AnonymcpElectronApi = Object.freeze({
   ): Promise<boolean> {
     const request = ReviewSetSensitivityRequestSchema.parse({ folderId, docId, decision })
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.REVIEW_SET_SENSITIVITY, request)
+    return BooleanResultSchema.parse(result).ok
+  },
+  async listPendingWrites(folderId?: string): Promise<PendingWriteItem[]> {
+    const request = PendingWriteListRequestSchema.parse(folderId ? { folderId } : {})
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.WRITES_LIST, request)
+    return PendingWriteListSchema.parse(result)
+  },
+  async getPendingWrite(folderId: string, relPath: string): Promise<PendingWriteDetail | null> {
+    const request = PendingWriteRequestSchema.parse({ folderId, relPath })
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.WRITE_DETAIL, request)
+    return PendingWriteDetailSchema.nullable().parse(result)
+  },
+  async promotePendingWrite(folderId: string, relPath: string): Promise<boolean> {
+    const request = PendingWriteRequestSchema.parse({ folderId, relPath })
+    const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.WRITE_PROMOTE, request)
     return BooleanResultSchema.parse(result).ok
   },
   async listCloudBlockedSensitiveDocuments(): Promise<CloudBlockedSensitiveDocument[]> {

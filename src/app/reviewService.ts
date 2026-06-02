@@ -237,6 +237,24 @@ export class LocalReviewService {
     )
   }
 
+  getPendingWrite(folderId: string, relPath: string): (PendingWrite & {
+    folderId: string
+    label: string
+    fileName: string
+    content: string
+    hashMatches: boolean
+  }) | null {
+    const folder = this.requireFolder(folderId)
+    const pending = this.registry.pendingWritePreview(folderId, relPath)
+    if (!pending) return null
+    return {
+      folderId,
+      label: folder.label,
+      fileName: basename(pending.relPath),
+      ...pending
+    }
+  }
+
   promoteWrite(folderId: string, relPath: string): boolean {
     return this.registry.promoteWrite(folderId, relPath)
   }

@@ -19,6 +19,8 @@ import type {
   DashboardSummary,
   FolderImportMode,
   FolderImportResult,
+  PendingWriteDetail,
+  PendingWriteItem,
   ReviewDocumentDetail,
   ReviewDocumentListItem
 } from '../../shared/ipc.js'
@@ -32,6 +34,7 @@ interface AppModel {
   dashboard: DashboardSummary | null
   reviewDocs: ReviewDocumentListItem[]
   sensitiveDocs: CloudBlockedSensitiveDocument[]
+  pendingWrites: PendingWriteItem[]
   loading: boolean
   error: string | null
   scanningFolder: string | null
@@ -47,6 +50,7 @@ function useAppModel(): AppModel {
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
   const [reviewDocs, setReviewDocs] = useState<ReviewDocumentListItem[]>([])
   const [sensitiveDocs, setSensitiveDocs] = useState<CloudBlockedSensitiveDocument[]>([])
+  const [pendingWrites, setPendingWrites] = useState<PendingWriteItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [scanningFolder, setScanningFolder] = useState<string | null>(null)
@@ -60,18 +64,21 @@ function useAppModel(): AppModel {
       const nextStatus = await window.anonymcp.getAppStatus()
       setStatus(nextStatus)
       if (nextStatus.mcpReady) {
-        const [nextDashboard, nextReviewDocs, nextSensitiveDocs] = await Promise.all([
+        const [nextDashboard, nextReviewDocs, nextSensitiveDocs, nextPendingWrites] = await Promise.all([
           window.anonymcp.getDashboard(),
           window.anonymcp.listReviewDocuments(),
-          window.anonymcp.listCloudBlockedSensitiveDocuments()
+          window.anonymcp.listCloudBlockedSensitiveDocuments(),
+          window.anonymcp.listPendingWrites()
         ])
         setDashboard(nextDashboard)
         setReviewDocs(nextReviewDocs)
         setSensitiveDocs(nextSensitiveDocs)
+        setPendingWrites(nextPendingWrites)
       } else {
         setDashboard(null)
         setReviewDocs([])
         setSensitiveDocs([])
+        setPendingWrites([])
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -116,6 +123,7 @@ function useAppModel(): AppModel {
     dashboard,
     reviewDocs,
     sensitiveDocs,
+    pendingWrites,
     loading,
     error,
     scanningFolder,
@@ -500,11 +508,60 @@ function ReviewDetailPanel({
   )
 }
 
+function PendingWritePanel({
+  detail,
+  busy,
+  error,
+  onPromote,
+  onClose
+}: {
+  detail: PendingWriteDetail
+  busy: boolean
+  error: string | null
+  onPromote: () => void
+  onClose: () => void
+}): React.JSX.Element {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="truncate font-medium text-slate-900">{detail.fileName}</h2>
+          <div className="mt-1 text-sm text-slate-500">{detail.label} - {detail.relPath}</div>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
+          Chiudi
+        </button>
+      </div>
+      <div className="p-5">
+        {!detail.hashMatches ? (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            La bozza in staging e' cambiata dopo la registrazione. Rigenera la bozza prima di confermare.
+          </div>
+        ) : null}
+        <pre className="h-80 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-800">
+          {detail.content}
+        </pre>
+        {error ? <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+        <button
+          type="button"
+          onClick={onPromote}
+          disabled={busy || !detail.hashMatches}
+          className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+        >
+          {busy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+          Conferma salvataggio
+        </button>
+      </div>
+    </section>
+  )
+}
+
 function Dashboard({
   status,
   dashboard,
   reviewDocs,
   sensitiveDocs,
+  pendingWrites,
   scanningFolder,
   onScan,
   onRefresh
@@ -513,12 +570,14 @@ function Dashboard({
   dashboard: DashboardSummary | null
   reviewDocs: ReviewDocumentListItem[]
   sensitiveDocs: CloudBlockedSensitiveDocument[]
+  pendingWrites: PendingWriteItem[]
   scanningFolder: string | null
   onScan: (folderId: string) => void
   onRefresh: () => Promise<void>
 }): React.JSX.Element {
   const [activeRef, setActiveRef] = useState<{ folderId: string; docId: string } | null>(null)
   const [detail, setDetail] = useState<ReviewDocumentDetail | null>(null)
+  const [writeDetail, setWriteDetail] = useState<PendingWriteDetail | null>(null)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   const [manualText, setManualText] = useState('')
   const [manualType, setManualType] = useState<ReviewDocumentDetail['entities'][number]['type']>('PERSONA')
@@ -633,6 +692,37 @@ function Dashboard({
     }
   }
 
+  async function openPendingWrite(folderId: string, relPath: string): Promise<void> {
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      setWriteDetail(await window.anonymcp.getPendingWrite(folderId, relPath))
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function promotePendingWrite(): Promise<void> {
+    if (!writeDetail) return
+    setActionBusy(true)
+    setActionError(null)
+    try {
+      const ok = await window.anonymcp.promotePendingWrite(writeDetail.folderId, writeDetail.relPath)
+      if (!ok) {
+        setActionError('Promozione non riuscita: la bozza potrebbe non esistere piu.')
+        return
+      }
+      setWriteDetail(null)
+      await onRefresh()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
   return (
     <main className="flex-1 bg-slate-50 p-6">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -733,7 +823,20 @@ function Dashboard({
           />
         ) : null}
 
-        <section className="grid gap-4 lg:grid-cols-2">
+        {writeDetail ? (
+          <PendingWritePanel
+            detail={writeDetail}
+            busy={actionBusy}
+            error={actionError}
+            onPromote={() => void promotePendingWrite()}
+            onClose={() => {
+              setWriteDetail(null)
+              setActionError(null)
+            }}
+          />
+        ) : null}
+
+        <section className="grid gap-4 xl:grid-cols-3">
           <div className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="font-medium text-slate-900">Documenti da review</h2>
@@ -801,6 +904,35 @@ function Dashboard({
               )}
             </div>
           </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="font-medium text-slate-900">Bozze LLM in attesa</h2>
+            </div>
+            <div className="max-h-80 overflow-auto">
+              {pendingWrites.length ? (
+                pendingWrites.slice(0, 8).map((write) => (
+                  <div key={`${write.folderId}-${write.relPath}`} className="border-b border-slate-100 px-5 py-3 last:border-b-0">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-900">{write.fileName}</div>
+                        <div className="mt-1 truncate text-xs text-slate-500">{write.label} - {write.relPath}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void openPendingWrite(write.folderId, write.relPath)}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                      >
+                        Apri
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-8 text-sm text-slate-500">Nessuna bozza in attesa.</div>
+              )}
+            </div>
+          </div>
         </section>
       </div>
     </main>
@@ -813,6 +945,7 @@ export default function App(): React.JSX.Element {
     dashboard,
     reviewDocs,
     sensitiveDocs,
+    pendingWrites,
     loading,
     error,
     scanningFolder,
@@ -865,6 +998,7 @@ export default function App(): React.JSX.Element {
           dashboard={dashboard}
           reviewDocs={reviewDocs}
           sensitiveDocs={sensitiveDocs}
+          pendingWrites={pendingWrites}
           scanningFolder={scanningFolder}
           onScan={(folderId) => void scanPractice(folderId)}
           onRefresh={refresh}

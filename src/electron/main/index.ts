@@ -21,6 +21,10 @@ import {
   FolderImportResultSchema,
   IPC_CHANNELS,
   ManualEntityRequestSchema,
+  PendingWriteDetailSchema,
+  PendingWriteListRequestSchema,
+  PendingWriteListSchema,
+  PendingWriteRequestSchema,
   ReviewApplySelectionRequestSchema,
   ReviewDocumentDetailSchema,
   ReviewDocumentRequestSchema,
@@ -244,6 +248,28 @@ function registerIpcHandlers(): void {
         request.docId,
         request.decision
       )
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.WRITES_LIST, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = PendingWriteListRequestSchema.parse(payload ?? {})
+    return PendingWriteListSchema.parse(localReviewService().listPendingWrites(request.folderId))
+  })
+
+  ipcMain.handle(IPC_CHANNELS.WRITE_DETAIL, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = PendingWriteRequestSchema.parse(payload)
+    return PendingWriteDetailSchema.nullable().parse(
+      localReviewService().getPendingWrite(request.folderId, request.relPath)
+    )
+  })
+
+  ipcMain.handle(IPC_CHANNELS.WRITE_PROMOTE, (event, payload: unknown) => {
+    assertTrustedSender(event)
+    const request = PendingWriteRequestSchema.parse(payload)
+    return BooleanResultSchema.parse({
+      ok: localReviewService().promoteWrite(request.folderId, request.relPath)
     })
   })
 

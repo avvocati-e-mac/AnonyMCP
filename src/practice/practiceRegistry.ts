@@ -768,6 +768,30 @@ export class PracticeRegistry {
   }
 
   /**
+   * Preview locale di una bozza in staging. Contiene testo re-idratato, quindi
+   * resta solo per TUI/app desktop e non va mai esposta via MCP.
+   */
+  pendingWritePreview(folderId: string, relPath: string): (PendingWrite & {
+    content: string
+    hashMatches: boolean
+  }) | null {
+    const practice = this.practices.get(folderId)
+    if (!practice) return null
+    const folderPath = practice.folder.path
+    const relNorm = relative(folderPath, resolveFolderTarget(folderPath, relPath))
+    const pending = loadPendingWrites(folderPath).find((entry) => entry.relPath === relNorm)
+    if (!pending) return null
+    const staged = stagingPathFor(folderPath, resolveFolderTarget(folderPath, relNorm))
+    if (!existsSync(staged)) return null
+    const content = readFileSync(staged, 'utf8')
+    return {
+      ...pending,
+      content,
+      hashMatches: contentHash(content) === pending.contentHash
+    }
+  }
+
+  /**
    * Promuove una scrittura dallo staging alla destinazione finale (conferma umana).
    * Uso LOCALE (TUI). Ritorna true se promossa.
    */

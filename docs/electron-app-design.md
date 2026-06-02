@@ -437,6 +437,8 @@ Implementazione locale prevista/avviata:
 - il setup cartelle usa il dialog di sistema e supporta import manuale, cartella "Pratiche"
   e struttura Clienti/Pratiche; i nomi identificanti vengono sostituiti da numeri opachi
   ordinati per data di creazione.
+- le bozze LLM in staging hanno lista leggera e dettaglio locale separato; il testo re-idratato
+  compare solo nella UI locale prima della promozione finale.
 
 ```text
 +------------------------------------------------------------------+

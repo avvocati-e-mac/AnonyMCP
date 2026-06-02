@@ -11,6 +11,9 @@ export const IPC_CHANNELS = {
   REVIEW_APPLY_SELECTION: 'review:apply-selection',
   REVIEW_APPROVE: 'review:approve',
   REVIEW_SET_SENSITIVITY: 'review:set-sensitivity',
+  WRITES_LIST: 'writes:list',
+  WRITE_DETAIL: 'write:detail',
+  WRITE_PROMOTE: 'write:promote',
   SENSITIVE_BLOCKED_LIST: 'sensitive-blocked:list'
 } as const
 
@@ -169,6 +172,35 @@ export const BooleanResultSchema = z.object({
   ok: z.boolean()
 }).strict()
 
+export const PendingWriteListRequestSchema = z.object({
+  folderId: z.string().min(1).optional()
+}).strict()
+
+export const PendingWriteSchema = z.object({
+  folderId: z.string(),
+  label: z.string(),
+  fileName: z.string(),
+  relPath: z.string(),
+  contentHash: z.string(),
+  stagedAt: z.string(),
+  overwrite: z.boolean().optional()
+}).strict()
+
+export const PendingWriteListSchema = z.array(PendingWriteSchema)
+export type PendingWriteItem = z.infer<typeof PendingWriteSchema>
+
+export const PendingWriteRequestSchema = z.object({
+  folderId: z.string().min(1),
+  relPath: z.string().min(1)
+}).strict()
+
+export const PendingWriteDetailSchema = PendingWriteSchema.extend({
+  content: z.string(),
+  hashMatches: z.boolean()
+}).strict()
+
+export type PendingWriteDetail = z.infer<typeof PendingWriteDetailSchema>
+
 export const CloudBlockedSensitiveDocumentSchema = z.object({
   folderId: z.string(),
   label: z.string(),
@@ -204,5 +236,8 @@ export interface AnonymcpElectronApi {
     docId: string,
     decision: z.infer<typeof SensitivityOverrideSchema> | null
   ) => Promise<boolean>
+  listPendingWrites: (folderId?: string) => Promise<PendingWriteItem[]>
+  getPendingWrite: (folderId: string, relPath: string) => Promise<PendingWriteDetail | null>
+  promotePendingWrite: (folderId: string, relPath: string) => Promise<boolean>
   listCloudBlockedSensitiveDocuments: () => Promise<CloudBlockedSensitiveDocument[]>
 }

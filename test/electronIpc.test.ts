@@ -6,6 +6,9 @@ import {
   FolderImportResultSchema,
   IPC_CHANNELS,
   ManualEntityRequestSchema,
+  PendingWriteDetailSchema,
+  PendingWriteListSchema,
+  PendingWriteRequestSchema,
   ReviewApplySelectionRequestSchema,
   ReviewDocumentDetailSchema,
   ReviewDocumentListSchema,
@@ -139,5 +142,46 @@ describe('Electron IPC contract', () => {
         ]
       })
     ).toThrow()
+  })
+
+  it('validates pending write schemas and keeps list payloads light', () => {
+    expect(
+      PendingWriteListSchema.parse([
+        {
+          folderId: '400f',
+          label: '400F',
+          fileName: 'bozza.md',
+          relPath: 'Ricerche/bozza.md',
+          contentHash: 'sha256:abc',
+          stagedAt: '2026-06-02T18:00:00.000Z'
+        }
+      ])[0]!.fileName
+    ).toBe('bozza.md')
+    expect(() =>
+      PendingWriteListSchema.parse([
+        {
+          folderId: '400f',
+          label: '400F',
+          fileName: 'bozza.md',
+          relPath: 'Ricerche/bozza.md',
+          contentHash: 'sha256:abc',
+          stagedAt: '2026-06-02T18:00:00.000Z',
+          content: 'Mario Rossi'
+        }
+      ])
+    ).toThrow()
+    expect(
+      PendingWriteDetailSchema.parse({
+        folderId: '400f',
+        label: '400F',
+        fileName: 'bozza.md',
+        relPath: 'Ricerche/bozza.md',
+        contentHash: 'sha256:abc',
+        stagedAt: '2026-06-02T18:00:00.000Z',
+        content: 'Mario Rossi',
+        hashMatches: true
+      }).hashMatches
+    ).toBe(true)
+    expect(() => PendingWriteRequestSchema.parse({ folderId: '400f', relPath: '' })).toThrow()
   })
 })
