@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { labelLooksLikePersonName } from '../src/config.js'
+import { folderIdLooksIdentifying, labelLooksLikePersonName } from '../src/config.js'
 
 describe('labelLooksLikePersonName (ADR-0004)', () => {
   it('riconosce "X c. Y" come probabile nome di causa', () => {
@@ -20,5 +20,19 @@ describe('labelLooksLikePersonName (ADR-0004)', () => {
 
   it('non si attiva su una singola parola capitalizzata', () => {
     expect(labelLooksLikePersonName('Civile')).toBe(false)
+  })
+})
+
+describe('folderIdLooksIdentifying (ADR-0004)', () => {
+  it('riconosce id pratica con nomi delle parti', () => {
+    expect(folderIdLooksIdentifying('rossi-c-bianchi')).toBe(true)
+    expect(folderIdLooksIdentifying('causa-mario-rossi')).toBe(true)
+  })
+
+  it('accetta id opachi o generici di test', () => {
+    expect(folderIdLooksIdentifying('400F')).toBe(false)
+    expect(folderIdLooksIdentifying('2026-CV-001')).toBe(false)
+    expect(folderIdLooksIdentifying('causa-test')).toBe(false)
+    expect(folderIdLooksIdentifying('p1')).toBe(false)
   })
 })

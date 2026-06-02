@@ -50,6 +50,20 @@ describe('flusso review_required (requireManualApproval)', () => {
     expect(hits[0]!.excerpt).not.toContain('RSSMRA80A01H501U')
     r.closeIndexes()
   })
+
+  it('applyReviewSelection rispetta le entità escluse dalla review umana', async () => {
+    const dir = tmp(DOC)
+    const r = new PracticeRegistry([{ id: 'p1', label: '400F', path: dir }], true)
+    await r.scan('p1')
+    const docId = r.getPractice('p1')!.docs.keys().next().value as string
+    const doc = r.getPractice('p1')!.docs.get(docId)!
+    const confirmed = doc.result!.entities.filter((e) => e.type !== 'CODICE_FISCALE')
+    expect(r.applyReviewSelection('p1', docId, confirmed)).toBe(true)
+    const text = doc.result!.text
+    expect(text).toContain('RSSMRA80A01H501U')
+    expect(text).not.toContain('CF_001')
+    r.closeIndexes()
+  })
 })
 
 describe('getReviewQueue (uso locale)', () => {

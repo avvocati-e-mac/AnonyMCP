@@ -65,7 +65,7 @@ export interface AnonyMcpConfig {
   requireManualApproval: boolean
   /**
    * Se false (default), i documenti che contengono categorie sensibili
-   * (art. 9/10 GDPR) NON sono mai serviti verso endpoint cloud.
+   * (art. 9/10 GDPR) NON sono serviti come Resource/read/search verso il canale MCP cloud.
    * Regola architetturale: non rendere true senza una DPIA esplicita.
    */
   allowCloudForSensitive: boolean

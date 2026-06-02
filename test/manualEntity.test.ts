@@ -48,6 +48,19 @@ describe('addManualEntity (recupero falsi negativi del NER)', () => {
     reg.closeIndexes()
   })
 
+  it('non reintroduce frontmatter o metadati quando aggiunge un falso negativo', async () => {
+    const raw = `---\nauthor: Mario Rossi\n---\nIl teste Anna Verdi depone.`
+    const { reg, docId } = await registryWithDoc(tmp(raw))
+    const entity = reg.addManualEntity('400f', docId, 'Anna Verdi', 'PERSONA')!
+    const text = reg.getPractice('400f')!.docs.get(docId)!.result!.text
+    expect(text).toContain(entity.pseudonym)
+    expect(text).not.toContain('Anna Verdi')
+    expect(text).not.toContain('Mario Rossi')
+    expect(text).not.toContain('author:')
+    expect(text).not.toContain('---')
+    reg.closeIndexes()
+  })
+
   it('ritorna null se il termine non è nel testo (nessun effetto)', async () => {
     const { reg, docId } = await registryWithDoc(tmp(DOC))
     expect(reg.addManualEntity('400f', docId, 'Inesistente Persona', 'PERSONA')).toBeNull()

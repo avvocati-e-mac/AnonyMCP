@@ -41,7 +41,12 @@ async function main(): Promise<void> {
   }
 
   const cachePassphrase = process.env.ANONYMCP_CACHE_KEY || undefined
-  const registry = new PracticeRegistry(config.folders, config.requireManualApproval, cachePassphrase)
+  const registry = new PracticeRegistry(
+    config.folders,
+    config.requireManualApproval,
+    cachePassphrase,
+    config.allowCloudForSensitive
+  )
   await registry.scan(practiceId)
 
   const practice = registry.getPractice(practiceId)!
@@ -73,6 +78,10 @@ async function main(): Promise<void> {
       }
     })
     if (result) {
+      if (!registry.applyReviewSelection(practiceId, doc.docId, result.confirmed)) {
+        process.stderr.write(`Impossibile applicare la review per ${doc.docId}: documento non aggiornato.\n`)
+        continue
+      }
       registry.approve(practiceId, doc.docId)
       approvedCount++
     }
@@ -104,8 +113,16 @@ async function reviewPendingWrites(registry: PracticeRegistry, practiceId: strin
   for (const w of pending) {
     const ok = await confirm(`  Salvare "${w.relPath}" nella pratica? [s/N] `)
     if (ok) {
-      registry.promoteWrite(practiceId, w.relPath)
-      process.stdout.write(`  ✓ Salvato: ${w.relPath}\n`)
+      try {
+        const promoted = registry.promoteWrite(practiceId, w.relPath)
+        process.stdout.write(
+          promoted ? `  ✓ Salvato: ${w.relPath}\n` : `  · Staging non trovato: ${w.relPath}\n`
+        )
+      } catch (err) {
+        process.stderr.write(
+          `  ! Non salvato: ${err instanceof Error ? err.message : String(err)}\n`
+        )
+      }
     } else {
       process.stdout.write(`  · Lasciato in sospeso: ${w.relPath}\n`)
     }

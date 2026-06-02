@@ -5,8 +5,8 @@
 //   anonymcp-server [--config ./anonymcp.config.json] [--auto-approve]
 // Variabili d'ambiente:
 //   ANONYMCP_CONFIG       percorso della config (alternativa a --config)
-//   ANONYMCP_AUTO_APPROVE "1" per approvare automaticamente (NON consigliato
-//                         per dati sensibili; bypassa la quarantena).
+//   ANONYMCP_AUTO_APPROVE "1" per approvare automaticamente (NON consigliato;
+//                         bypassa la review ma non allowCloudForSensitive).
 // ============================================================
 
 import { resolve, dirname } from 'node:path'
@@ -58,6 +58,7 @@ async function main(): Promise<void> {
   }
 
   // Auto-approve opzionale (utile per Fase 1 / demo; sconsigliato in produzione).
+  // Non bypassa il gate allowCloudForSensitive: approvato non significa sempre esponibile.
   const autoApprove = process.argv.includes('--auto-approve') || process.env.ANONYMCP_AUTO_APPROVE === '1'
   if (autoApprove) {
     log.warn('AUTO-APPROVE attivo: i documenti sono esposti senza revisione umana')

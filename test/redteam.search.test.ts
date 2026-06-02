@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,6 +26,10 @@ beforeAll(async () => {
   const [ct, st] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: 'test', version: '1.0.0' })
   await Promise.all([server.connect(st), client.connect(ct)])
+})
+
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true })
 })
 
 describe('search guard anti-PII', () => {
@@ -67,5 +71,45 @@ describe('reviewList è locale, mai esposta via MCP', () => {
     })
     const text = (res.content as { type: string; text: string }[])[0]!.text
     expect(text).not.toContain('atto.md')
+  })
+})
+
+describe('allowCloudForSensitive=false', () => {
+  it('blocca Resource e ricerca per un documento sensibile anche se auto-approvato', async () => {
+    const sensitiveDir = mkdtempSync(join(tmpdir(), 'anonymcp-sensitive-'))
+    try {
+      writeFileSync(
+        join(sensitiveDir, 'penale.md'),
+        "L'imputato Mario Rossi è indagato per reato informatico.",
+        'utf8'
+      )
+      const config: AnonyMcpConfig = {
+        version: 1,
+        folders: [{ id: 'penale-test', label: 'Penale Test', path: sensitiveDir, matter: 'penale' }],
+        requireManualApproval: false,
+        allowCloudForSensitive: false,
+        logLevel: 'error'
+      }
+      const { server, registry } = buildServer(config)
+      await registry.scan('penale-test')
+      const docId = registry.getPractice('penale-test')!.docs.keys().next().value as string
+      const status = registry.status('penale-test')
+      expect(status.approved).toBe(1)
+      expect(status.exposed).toBe(0)
+      expect(status.cloudBlockedSensitiveDocs).toBe(1)
+      expect(registry.exposableDocs()).toHaveLength(0)
+      expect(registry.search('penale-test', 'imputato')).toHaveLength(0)
+
+      const [ct, st] = InMemoryTransport.createLinkedPair()
+      const localClient = new Client({ name: 'sensitive-test', version: '1.0.0' })
+      await Promise.all([server.connect(st), localClient.connect(ct)])
+      const { resources } = await localClient.listResources()
+      expect(resources).toHaveLength(0)
+      await expect(
+        localClient.readResource({ uri: `anonymcp://practice/penale-test/${docId}` })
+      ).rejects.toThrow()
+    } finally {
+      rmSync(sensitiveDir, { recursive: true, force: true })
+    }
   })
 })

@@ -100,6 +100,49 @@ describe('PracticeRegistry — M-Write end-to-end (filesystem)', () => {
     expect(reg.listPendingWrites('400f')).toHaveLength(0)
   })
 
+  it('rifiuta una seconda scrittura sullo stesso relPath se esiste un pending', () => {
+    const dir = tmp()
+    const reg = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    reg.stageWrite('400f', 'Ricerche/bozza.md', 'Prima versione.')
+    expect(() => reg.stageWrite('400f', 'Ricerche/bozza.md', 'Seconda versione.')).toThrow(
+      /attesa di conferma/i
+    )
+    const staged = join(dir, STAGING_DIRNAME, 'Ricerche/bozza.md')
+    expect(readFileSync(staged, 'utf8')).toBe('Prima versione.')
+  })
+
+  it('con overwrite sostituisce lo staging e aggiorna il pending', () => {
+    const dir = tmp()
+    const reg = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    reg.stageWrite('400f', 'Ricerche/bozza.md', 'Prima versione.')
+    reg.stageWrite('400f', 'Ricerche/bozza.md', 'Seconda versione.', true)
+    const staged = join(dir, STAGING_DIRNAME, 'Ricerche/bozza.md')
+    expect(readFileSync(staged, 'utf8')).toBe('Seconda versione.')
+    expect(reg.listPendingWrites('400f')).toHaveLength(1)
+    expect(reg.listPendingWrites('400f')[0]!.overwrite).toBe(true)
+  })
+
+  it('promoteWrite blocca lo staging modificato dopo la registrazione', () => {
+    const dir = tmp()
+    const reg = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    reg.stageWrite('400f', 'Ricerche/bozza.md', 'Contenuto originale.')
+    const staged = join(dir, STAGING_DIRNAME, 'Ricerche/bozza.md')
+    writeFileSync(staged, 'Contenuto alterato.', 'utf8')
+    expect(() => reg.promoteWrite('400f', 'Ricerche/bozza.md')).toThrow(/Staging modificato/i)
+    expect(existsSync(join(dir, 'Ricerche/bozza.md'))).toBe(false)
+    expect(reg.listPendingWrites('400f')).toHaveLength(1)
+  })
+
+  it('promoteWrite non sovrascrive un file finale creato dopo lo staging senza overwrite', () => {
+    const dir = tmp()
+    const reg = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    reg.stageWrite('400f', 'Ricerche/bozza.md', 'Contenuto.')
+    reg.createFolder('400f', 'Ricerche')
+    writeFileSync(join(dir, 'Ricerche/bozza.md'), 'Creato nel frattempo.', 'utf8')
+    expect(() => reg.promoteWrite('400f', 'Ricerche/bozza.md')).toThrow(/File già esistente/i)
+    expect(readFileSync(join(dir, 'Ricerche/bozza.md'), 'utf8')).toBe('Creato nel frattempo.')
+  })
+
   it('auto-approve: scrittura diretta senza staging', () => {
     const dir = tmp()
     const reg = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], false)

@@ -20,8 +20,8 @@ const manifest = JSON.parse(readFileSync(join(DIR, 'manifest.json'), 'utf8')) as
 >
 
 /**
- * Stub NER deterministico che simula il layer BERT/Italian-Legal-BERT in
- * produzione: marca come PERSONA/ORGANIZZAZIONE i nomi attesi (presi dal
+ * Stub NER deterministico che simula il contratto del futuro layer
+ * `italian-ner-xxl-v2`: marca come PERSONA/ORGANIZZAZIONE i nomi attesi (presi dal
  * manifest) che il solo regex non cattura senza forte contesto. Così il test
  * verifica il contratto anti-leak della pipeline COMPLETA (regex + NER).
  */

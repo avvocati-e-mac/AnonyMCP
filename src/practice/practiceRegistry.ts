@@ -18,7 +18,8 @@ import {
 } from 'node:fs'
 import { join, basename, dirname, relative } from 'node:path'
 import type { AnonymizationResult, DetectedEntity, DocumentStatus, ExposedFolder } from '../types.js'
-import { isSupported, isTextDocument } from '../pipeline/toMarkdown.js'
+import { isSupported, isTextDocument, textToCanonical } from '../pipeline/toMarkdown.js'
+import { stripTextMetadata } from '../pipeline/metadataStripper.js'
 import { processText } from '../pipeline/documentService.js'
 import { SessionManager } from '../engine/sessionManager.js'
 import { applyPseudonyms, buildEntityRegex } from '../engine/anonymizer.js'
@@ -108,7 +109,8 @@ export class PracticeRegistry {
   constructor(
     private folders: ExposedFolder[],
     private requireManualApproval: boolean,
-    private cachePassphrase?: string
+    private cachePassphrase?: string,
+    private allowCloudForSensitive = false
   ) {
     for (const folder of folders) {
       this.practices.set(folder.id, { folder, session: new SessionManager(), docs: new Map() })
@@ -154,7 +156,8 @@ export class PracticeRegistry {
   /**
    * (Ri)scansiona una pratica: pseudonimizza ogni documento testuale.
    * I documenti restano in `review_required` se requireManualApproval è attivo,
-   * altrimenti vengono auto-approvati e indicizzati. Ritorna un sommario.
+   * altrimenti vengono auto-approvati. L'indicizzazione avviene solo se sono anche
+   * esponibili secondo la policy cloud. Ritorna un sommario.
    *
    * Coerenza pseudonimi: precarica sia la cache cifrata (hash) sia il dizionario
    * di pratica in chiaro (testo originale, ADR-0003), così le entità note della
@@ -213,13 +216,14 @@ export class PracticeRegistry {
       const isAutoApprove = !this.requireManualApproval
       const status: DocumentStatus =
         isAutoApprove || isApproved(approvals, docHash) ? 'approved' : 'review_required'
-      practice.docs.set(docId, { docId, filePath, status, sourceHash: docHash, result })
+      const doc: DocEntry = { docId, filePath, status, sourceHash: docHash, result }
+      practice.docs.set(docId, doc)
       allEntities.push(...result.entities)
       scanned++
       if (status === 'review_required') reviewRequired++
       else {
         approved++
-        this.indexDoc(practice, docId, result.text)
+        if (this.isExposable(doc)) this.indexDoc(practice, docId, result.text)
       }
       log.info('Documento processato', { folderId, docId, status, sensitive: result.sensitive })
     }
@@ -243,7 +247,8 @@ export class PracticeRegistry {
       const reprocessed = await processText(raw2, { session: practice.session })
       if (reprocessed.entities.length !== before) {
         doc.result = reprocessed
-        if (doc.status === 'approved') this.indexDoc(practice, doc.docId, reprocessed.text)
+        if (this.isExposable(doc)) this.indexDoc(practice, doc.docId, reprocessed.text)
+        else practice.index?.removeDocument(doc.docId)
       }
     }
     if (this.cachePassphrase && scanned > 0) {
@@ -293,21 +298,39 @@ export class PracticeRegistry {
     return practice.index
   }
 
-  /** Indicizza un documento approvato (testo pseudonimizzato) per la ricerca BM25. */
+  /** Indicizza un documento esponibile (testo pseudonimizzato) per la ricerca BM25. */
   private indexDoc(practice: PracticeEntry, docId: string, text: string): void {
     this.getIndex(practice)?.indexDocument(docId, text)
   }
 
+  /** True se un documento approvato puo' essere esposto verso il canale MCP/cloud. */
+  isExposable(doc: DocEntry): boolean {
+    return (
+      doc.status === 'approved' &&
+      !!doc.result &&
+      (this.allowCloudForSensitive || !doc.result.sensitive)
+    )
+  }
+
+  private canonicalTextForDoc(doc: DocEntry): string | null {
+    try {
+      return textToCanonical(stripTextMetadata(readFileSync(doc.filePath, 'utf8')))
+    } catch {
+      return null
+    }
+  }
+
   /**
-   * Approva un documento in revisione (human-in-the-loop). All'approvazione il
-   * documento viene indicizzato in FTS5 e diventa esponibile come Resource.
+   * Approva un documento in revisione (human-in-the-loop). L'approvazione abilita
+   * l'esposizione solo se la policy cloud consente quel documento.
    */
   approve(folderId: string, docId: string): boolean {
     const practice = this.practices.get(folderId)
     const doc = practice?.docs.get(docId)
     if (!practice || !doc) return false
     doc.status = 'approved'
-    if (doc.result) this.indexDoc(practice, docId, doc.result.text)
+    if (this.isExposable(doc) && doc.result) this.indexDoc(practice, docId, doc.result.text)
+    else practice.index?.removeDocument(docId)
     // Persiste l'approvazione su disco, così è visibile agli altri processi
     // (es. il server di Claude Desktop) senza riavvio, legandola al sourceHash.
     recordApproval(practice.folder.path, folderId, doc.sourceHash)
@@ -333,7 +356,8 @@ export class PracticeRegistry {
       if (nowApproved && doc.status !== 'approved') {
         // Promozione: la TUI ha approvato → esponi e indicizza.
         doc.status = 'approved'
-        if (doc.result) this.indexDoc(practice, doc.docId, doc.result.text)
+        if (this.isExposable(doc) && doc.result) this.indexDoc(practice, doc.docId, doc.result.text)
+        else practice.index?.removeDocument(doc.docId)
         changed = true
       } else if (!nowApproved && doc.status === 'approved') {
         // Revoca: l'approvazione è sparita dal disco (revocata o file cambiato) →
@@ -379,7 +403,7 @@ export class PracticeRegistry {
    * `doc.result.entities`, quindi confluirà nel dizionario di pratica all'export.
    *
    * Ritorna l'entità creata, o null se il termine è vuoto o non compare nel testo
-   * originale del documento (non avrebbe alcun effetto). Uso LOCALE (TUI/app),
+   * canonico del documento (non avrebbe alcun effetto). Uso LOCALE (TUI/app),
    * mai esposto via MCP.
    */
   addManualEntity(
@@ -395,14 +419,10 @@ export class PracticeRegistry {
     const term = originalText.trim()
     if (term.length === 0) return null
 
-    // Il testo originale del documento è sul disco (già noto da scan); serve per
-    // contare le occorrenze e ri-applicare gli pseudonimi sul sorgente.
-    let sourceText: string
-    try {
-      sourceText = readFileSync(doc.filePath, 'utf8')
-    } catch {
-      return null
-    }
+    // Riparte dal testo canonico gia' sanitizzato, non dal file raw: altrimenti
+    // una correzione manuale puo' reintrodurre frontmatter/metadati rimossi.
+    const sourceText = this.canonicalTextForDoc(doc)
+    if (sourceText == null) return null
 
     const re = buildEntityRegex(term)
     const matches = sourceText.match(re)
@@ -426,7 +446,27 @@ export class PracticeRegistry {
     doc.result.entities.push(entity)
     // Ri-anonimizza l'intero documento con la lista aggiornata (longest-match).
     doc.result.text = applyPseudonyms(sourceText, doc.result.entities)
+    if (this.isExposable(doc)) this.indexDoc(practice, doc.docId, doc.result.text)
+    else practice.index?.removeDocument(doc.docId)
     return entity
+  }
+
+  /**
+   * Applica la selezione finale della review locale: le entita' confermate restano,
+   * quelle escluse dall'umano vengono tolte prima dell'approvazione. Uso LOCALE
+   * (TUI/app), mai esposto via MCP.
+   */
+  applyReviewSelection(folderId: string, docId: string, entities: DetectedEntity[]): boolean {
+    const practice = this.practices.get(folderId)
+    const doc = practice?.docs.get(docId)
+    if (!practice || !doc?.result) return false
+    const sourceText = this.canonicalTextForDoc(doc)
+    if (sourceText == null) return false
+    doc.result.entities = entities.map((e) => ({ ...e }))
+    doc.result.text = applyPseudonyms(sourceText, doc.result.entities)
+    if (this.isExposable(doc)) this.indexDoc(practice, doc.docId, doc.result.text)
+    else practice.index?.removeDocument(doc.docId)
+    return true
   }
 
   /** Esporta il dizionario di pratica (testo in chiaro) accanto ai documenti. */
@@ -458,30 +498,36 @@ export class PracticeRegistry {
     }))
   }
 
-  /** Documenti esponibili come resource: solo quelli approvati. */
+  /** Documenti esponibili come resource: approvati e non bloccati dalla policy cloud. */
   exposableDocs(): { folderId: string; doc: DocEntry }[] {
     const out: { folderId: string; doc: DocEntry }[] = []
     for (const [folderId, p] of this.practices) {
       for (const doc of p.docs.values()) {
-        if (doc.status === 'approved') out.push({ folderId, doc })
+        if (this.isExposable(doc)) out.push({ folderId, doc })
       }
     }
     return out
   }
 
   /**
-   * Ricerca BM25 sui chunk dei documenti APPROVATI di una pratica.
-   * Hard gate implicito: l'indice contiene solo documenti approvati (vedi scan/approve),
-   * quindi una pratica non revisionata non restituisce alcun testo.
+   * Ricerca BM25 sui chunk dei documenti ESPONIBILI di una pratica.
+   * Hard gate implicito: l'indice contiene solo documenti esponibili (vedi scan/approve),
+   * quindi una pratica non revisionata o bloccata come sensibile non restituisce testo.
    * Ritorna array vuoto se non c'è ancora un indice.
    */
   search(folderId: string, query: string, limit = 10): { docId: string; excerpt: string }[] {
     const practice = this.practices.get(folderId)
     if (!practice?.index) return []
-    return practice.index.search(query, limit).map((hit) => ({
-      docId: hit.docId,
-      excerpt: hit.text
-    }))
+    return practice.index
+      .search(query, limit)
+      .filter((hit) => {
+        const doc = practice.docs.get(hit.docId)
+        return !!doc && this.isExposable(doc)
+      })
+      .map((hit) => ({
+        docId: hit.docId,
+        excerpt: hit.text
+      }))
   }
 
   /** Stato di una pratica (conteggi, NON valori reali). */
@@ -491,23 +537,33 @@ export class PracticeRegistry {
     reviewRequired: number
     entitiesByType: Record<string, number>
     sensitiveDocs: number
+    exposed: number
+    cloudBlockedSensitiveDocs: number
   } {
     const p = this.practices.get(folderId)
     if (!p) throw new Error(`Pratica sconosciuta: ${folderId}`)
     let approved = 0
     let reviewRequired = 0
     let sensitiveDocs = 0
+    let exposed = 0
+    let cloudBlockedSensitiveDocs = 0
     for (const doc of p.docs.values()) {
       if (doc.status === 'approved') approved++
       else if (doc.status === 'review_required' || doc.status === 'quarantined') reviewRequired++
       if (doc.result?.sensitive) sensitiveDocs++
+      if (this.isExposable(doc)) exposed++
+      if (doc.status === 'approved' && doc.result?.sensitive && !this.allowCloudForSensitive) {
+        cloudBlockedSensitiveDocs++
+      }
     }
     return {
       label: p.folder.label,
       approved,
       reviewRequired,
       entitiesByType: p.session.getStats().byType,
-      sensitiveDocs
+      sensitiveDocs,
+      exposed,
+      cloudBlockedSensitiveDocs
     }
   }
 
@@ -538,15 +594,22 @@ export class PracticeRegistry {
     }
 
     if (this.requireManualApproval) {
+      const staged = stagingPathFor(folderPath, absTarget)
+      const existingPending = loadPendingWrites(folderPath).find((e) => e.relPath === relNorm)
+      if (!overwrite && (existingPending || existsSync(staged))) {
+        throw new Error(
+          `Scrittura già in attesa di conferma: ${relNorm}. Confermala dalla TUI o usa overwrite per sostituire lo staging.`
+        )
+      }
       // Staging + pending: il file ri-idratato (con valori reali) resta in una
       // sottocartella artefatto, mai esposta come resource, fino alla conferma umana.
-      const staged = stagingPathFor(folderPath, absTarget)
       mkdirSync(dirname(staged), { recursive: true })
       writeFileSync(staged, rehydrated.text, 'utf8')
       const pending: PendingWrite = {
         relPath: relNorm,
         contentHash: contentHash(rehydrated.text),
-        stagedAt: new Date().toISOString()
+        stagedAt: new Date().toISOString(),
+        overwrite
       }
       recordPendingWrite(folderPath, folderId, pending)
       log.info('Scrittura in staging (attende conferma)', { folderId, relPath: relNorm })
@@ -598,10 +661,20 @@ export class PracticeRegistry {
     const absTarget = resolveFolderTarget(folderPath, relPath)
     const staged = stagingPathFor(folderPath, absTarget)
     if (!existsSync(staged)) return false
+    const relNorm = relative(folderPath, absTarget)
+    const pending = loadPendingWrites(folderPath).find((e) => e.relPath === relNorm)
+    if (!pending) return false
+    const stagedText = readFileSync(staged, 'utf8')
+    if (contentHash(stagedText) !== pending.contentHash) {
+      throw new Error(`Staging modificato dopo la scrittura: ${relNorm}. Rigenera la bozza.`)
+    }
+    if (!pending.overwrite && existsSync(absTarget)) {
+      throw new Error(`File già esistente: ${relNorm}. Rigenera la bozza con overwrite.`)
+    }
     mkdirSync(dirname(absTarget), { recursive: true })
     renameSync(staged, absTarget)
-    removePendingWrite(folderPath, folderId, relative(folderPath, absTarget))
-    log.info('Scrittura promossa', { folderId, relPath })
+    removePendingWrite(folderPath, folderId, relNorm)
+    log.info('Scrittura promossa', { folderId, relPath: relNorm })
     return true
   }
 

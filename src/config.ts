@@ -47,6 +47,14 @@ export function loadConfig(configPath: string): AnonyMcpConfig {
   // Avvisa se un label di pratica sembra contenere nomi delle parti (ADR-0004):
   // il label è esposto all'LLM via list_folders → userà un numero opaco (es. "400F").
   for (const folder of config.folders) {
+    if (folderIdLooksIdentifying(folder.id)) {
+      log.warn(
+        `Id pratica "${folder.id}" sembra contenere informazioni identificanti. ` +
+          'Il folderId è esposto all\'LLM negli URI e in list_folders: usa un numero opaco ' +
+          '(es. "400F"). Vedi ADR-0004.',
+        { folderId: folder.id }
+      )
+    }
     if (labelLooksLikePersonName(folder.label)) {
       log.warn(
         `Label pratica "${folder.label}" sembra contenere nomi di persona. ` +
@@ -57,6 +65,38 @@ export function loadConfig(configPath: string): AnonyMcpConfig {
     }
   }
   return config
+}
+
+/**
+ * Euristica per il folderId: l'id e' ancora piu' delicato del label perche'
+ * entra negli URI MCP. Accetta id numerici/opachi, avvisa su pattern tipo
+ * "rossi-c-bianchi", "mario_rossi", "causa-rossi-bianchi".
+ */
+export function folderIdLooksIdentifying(id: string): boolean {
+  const normalized = id.trim().toLowerCase()
+  if (!normalized) return false
+  if (labelLooksLikePersonName(id)) return true
+  if (/(^|[-_.\s])(c|contro|vs|versus)([-_.\s]|$)/i.test(normalized)) {
+    return /[a-zà-ÿ]{3,}/i.test(normalized)
+  }
+  const generic = new Set([
+    'causa',
+    'pratica',
+    'fascicolo',
+    'test',
+    'demo',
+    'civile',
+    'penale',
+    'tributario',
+    'amministrativo',
+    'rg',
+    'cv',
+    'p'
+  ])
+  const words = normalized
+    .split(/[^a-zà-ÿ]+/i)
+    .filter((w) => w.length >= 3 && !generic.has(w))
+  return words.length >= 2
 }
 
 /**

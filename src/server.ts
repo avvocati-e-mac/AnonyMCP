@@ -82,7 +82,8 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
   const registry = new PracticeRegistry(
     config.folders,
     config.requireManualApproval,
-    cachePassphrase
+    cachePassphrase,
+    config.allowCloudForSensitive
   )
 
   const server = new McpServer(
@@ -127,9 +128,9 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
       const docId = String(variables.docId)
       registry.refreshApprovals(folderId)
       const doc = registry.getPractice(folderId)?.docs.get(docId)
-      if (!doc || doc.status !== 'approved' || !doc.result) {
+      if (!doc || !registry.isExposable(doc) || !doc.result) {
         throw new Error(
-          `Resource non disponibile: documento assente, in quarantena o non approvato (${folderId}/${docId}).`
+          `Resource non disponibile: documento assente, in quarantena, non approvato o bloccato dalla policy sui documenti sensibili (${folderId}/${docId}).`
         )
       }
       return {
@@ -376,7 +377,8 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
 
   log.info('Server MCP costruito', {
     folders: config.folders.length,
-    requireManualApproval: config.requireManualApproval
+    requireManualApproval: config.requireManualApproval,
+    allowCloudForSensitive: config.allowCloudForSensitive
   })
 
   return { server, registry }

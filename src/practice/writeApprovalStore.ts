@@ -24,6 +24,8 @@ export interface PendingWrite {
   /** Hash del contenuto ri-idratato in staging (rileva modifiche). */
   contentHash: string
   stagedAt: string
+  /** True se la promozione puo' sostituire un file finale gia' esistente. */
+  overwrite?: boolean
 }
 
 export interface WritesFile {
