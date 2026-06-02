@@ -12,6 +12,12 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
   `contextIsolation`, `sandbox`, `nodeIntegration=false`, CSP restrittiva e IPC nominale
   validato con Zod. La prima UI mostra onboarding privacy, setup pratiche se manca la config
   e dashboard generale preliminare; non collega ancora review/import reale al motore.
+- Servizio locale `LocalReviewService` per la futura UI Electron: dashboard pratiche, lista
+  documenti da review, dettaglio locale originale/pseudonimizzato, entità manuali, approvazione,
+  pending write e documenti sensibili bloccati per il cloud.
+- Persistenza locale delle decisioni dell'avvocato sui documenti sensibili
+  (`pratica.sensitivity.json`): AnonyMCP suggerisce, ma l'avvocato può forzare `Sensibile` o
+  `Non sensibile`; la decisione è legata all'hash del documento e non contiene nomi/path reali.
 
 ### Aggiunto — Fase 2 / M-Write (scrittura LLM→cartella)
 - Strumenti MCP `anonymcp_write_document` e `anonymcp_create_folder`: l'LLM salva bozze

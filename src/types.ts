@@ -108,6 +108,9 @@ export interface PracticeCache {
  */
 export type DocumentStatus = 'quarantined' | 'review_required' | 'approved' | 'superseded'
 
+/** Decisione locale dell'avvocato sulla sensibilita' del documento. */
+export type SensitivityOverride = 'sensitive' | 'not_sensitive'
+
 /** Una voce del dizionario di pratica (formato Anonimator, testo in chiaro). Vedi ADR-0003. */
 export interface EntityDictionaryEntry {
   /** Testo originale dell'entità (in chiaro; il file resta locale, mai esposto via MCP). */
@@ -136,8 +139,15 @@ export interface AnonymizationResult {
   /** Testo pseudonimizzato (sicuro da esporre). */
   text: string
   entities: DetectedEntity[]
-  /** True se contiene categorie sensibili (art. 9/10 GDPR). */
+  /**
+   * True se il documento e' trattato come sensibile nella policy effettiva.
+   * Il valore puo' derivare dal classificatore locale oppure da override umano.
+   */
   sensitive: boolean
+  /** Suggerimento automatico prima della decisione umana. */
+  sensitiveSuggested?: boolean
+  /** Override locale deciso dall'avvocato; assente se vale il suggerimento automatico. */
+  sensitivityOverride?: SensitivityOverride
   /** Punteggio di rischio residuo 0..1 (più alto = più rischioso). */
   residualRisk: number
 }

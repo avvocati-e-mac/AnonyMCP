@@ -17,7 +17,13 @@ import {
   renameSync
 } from 'node:fs'
 import { join, basename, dirname, relative } from 'node:path'
-import type { AnonymizationResult, DetectedEntity, DocumentStatus, ExposedFolder } from '../types.js'
+import type {
+  AnonymizationResult,
+  DetectedEntity,
+  DocumentStatus,
+  ExposedFolder,
+  SensitivityOverride
+} from '../types.js'
 import { isSupported, isTextDocument, textToCanonical } from '../pipeline/toMarkdown.js'
 import { stripTextMetadata } from '../pipeline/metadataStripper.js'
 import { processText } from '../pipeline/documentService.js'
@@ -47,6 +53,12 @@ import {
   contentHash,
   type PendingWrite
 } from './writeApprovalStore.js'
+import {
+  getSensitivityDecision,
+  loadSensitivityDecisions,
+  recordSensitivityDecision,
+  removeSensitivityDecision
+} from './sensitivityStore.js'
 import { log } from '../util/logger.js'
 
 /** Esito di una scrittura M-Write (LOCALE; il return verso l'LLM è derivato senza PII). */
@@ -200,6 +212,8 @@ export class PracticeRegistry {
 
     // Stato di approvazione persistito (condiviso con la TUI/altri processi).
     const approvals = loadApprovals(practice.folder.path)
+    // Decisioni di sensibilita' persistite: AnonyMCP suggerisce, l'avvocato decide.
+    const sensitivityDecisions = loadSensitivityDecisions(practice.folder.path)
 
     let scanned = 0
     let reviewRequired = 0
@@ -211,6 +225,7 @@ export class PracticeRegistry {
       const raw = readFileSync(filePath, 'utf8')
       const docHash = fileSourceHash(raw)
       const result = await processText(raw, { session: practice.session })
+      this.applySensitivityDecision(result, getSensitivityDecision(sensitivityDecisions, docHash))
       // Un documento è approvato se: auto-approve, OPPURE è stato approvato su disco
       // (dalla TUI) E il file non è cambiato dall'approvazione (sourceHash combacia).
       const isAutoApprove = !this.requireManualApproval
@@ -245,6 +260,10 @@ export class PracticeRegistry {
       }
       const before = doc.result.entities.length
       const reprocessed = await processText(raw2, { session: practice.session })
+      this.applySensitivityDecision(
+        reprocessed,
+        getSensitivityDecision(sensitivityDecisions, doc.sourceHash)
+      )
       if (reprocessed.entities.length !== before) {
         doc.result = reprocessed
         if (this.isExposable(doc)) this.indexDoc(practice, doc.docId, reprocessed.text)
@@ -318,6 +337,20 @@ export class PracticeRegistry {
     } catch {
       return null
     }
+  }
+
+  private applySensitivityDecision(
+    result: AnonymizationResult,
+    decision: SensitivityOverride | undefined
+  ): void {
+    result.sensitiveSuggested ??= result.sensitive
+    if (decision) {
+      result.sensitive = decision === 'sensitive'
+      result.sensitivityOverride = decision
+      return
+    }
+    result.sensitive = result.sensitiveSuggested
+    delete result.sensitivityOverride
   }
 
   /**
@@ -469,6 +502,79 @@ export class PracticeRegistry {
     return true
   }
 
+  /**
+   * Imposta o rimuove la decisione umana sulla sensibilita' del documento.
+   * Uso LOCALE (TUI/app), mai esposto via MCP: il classificatore resta un
+   * suggerimento e l'avvocato puo' forzare "sensibile" o "non sensibile".
+   */
+  setSensitivityOverride(
+    folderId: string,
+    docId: string,
+    decision: SensitivityOverride | null
+  ): boolean {
+    const practice = this.practices.get(folderId)
+    const doc = practice?.docs.get(docId)
+    if (!practice || !doc?.result) return false
+
+    if (decision) {
+      recordSensitivityDecision(practice.folder.path, folderId, doc.sourceHash, decision)
+    } else {
+      removeSensitivityDecision(practice.folder.path, folderId, doc.sourceHash)
+    }
+    this.applySensitivityDecision(doc.result, decision ?? undefined)
+
+    if (this.isExposable(doc)) this.indexDoc(practice, doc.docId, doc.result.text)
+    else practice.index?.removeDocument(doc.docId)
+    this.onResourcesChanged?.()
+    return true
+  }
+
+  /**
+   * Lista locale dei documenti sensibili che non sono indicizzati/esposti verso il cloud.
+   * Contiene nome file e path pratica: solo per UI locale, MAI verso MCP.
+   */
+  listCloudBlockedSensitiveDocs(): {
+    folderId: string
+    label: string
+    practicePath: string
+    docId: string
+    fileName: string
+    status: DocumentStatus
+    sensitive: boolean
+    sensitiveSuggested: boolean
+    sensitivityOverride?: SensitivityOverride
+  }[] {
+    const out: {
+      folderId: string
+      label: string
+      practicePath: string
+      docId: string
+      fileName: string
+      status: DocumentStatus
+      sensitive: boolean
+      sensitiveSuggested: boolean
+      sensitivityOverride?: SensitivityOverride
+    }[] = []
+
+    for (const [folderId, practice] of this.practices) {
+      for (const doc of practice.docs.values()) {
+        if (!doc.result?.sensitive || this.isExposable(doc)) continue
+        out.push({
+          folderId,
+          label: practice.folder.label,
+          practicePath: practice.folder.path,
+          docId: doc.docId,
+          fileName: basename(doc.filePath),
+          status: doc.status,
+          sensitive: doc.result.sensitive,
+          sensitiveSuggested: doc.result.sensitiveSuggested ?? doc.result.sensitive,
+          sensitivityOverride: doc.result.sensitivityOverride
+        })
+      }
+    }
+    return out
+  }
+
   /** Esporta il dizionario di pratica (testo in chiaro) accanto ai documenti. */
   exportDictionary(folderId: string): number {
     const practice = this.practices.get(folderId)
@@ -487,14 +593,25 @@ export class PracticeRegistry {
    * associa il docId opaco al nome file reale così che l'umano sappia cosa sta
    * approvando. Non passa mai per Resources/tool dell'LLM.
    */
-  reviewList(folderId: string): { docId: string; fileName: string; status: DocumentStatus; sensitive: boolean }[] {
+  reviewList(folderId: string): {
+    docId: string
+    fileName: string
+    status: DocumentStatus
+    sensitive: boolean
+    sensitiveSuggested: boolean
+    sensitivityOverride?: SensitivityOverride
+    exposable: boolean
+  }[] {
     const p = this.practices.get(folderId)
     if (!p) throw new Error(`Pratica sconosciuta: ${folderId}`)
     return [...p.docs.values()].map((d) => ({
       docId: d.docId,
       fileName: basename(d.filePath),
       status: d.status,
-      sensitive: d.result?.sensitive ?? false
+      sensitive: d.result?.sensitive ?? false,
+      sensitiveSuggested: d.result?.sensitiveSuggested ?? d.result?.sensitive ?? false,
+      sensitivityOverride: d.result?.sensitivityOverride,
+      exposable: this.isExposable(d)
     }))
   }
 

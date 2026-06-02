@@ -27,10 +27,13 @@ devono mai rompersi**: ogni modifica va verificata contro questa lista. Vedi anc
    sono invertibili → indicizzare testo non anonimizzato = leak a riposo.
 5. **Sanitizza prima di pseudonimizzare** (`src/pipeline/toMarkdown.ts:sanitizeMarkdown`):
    zero-width, entità HTML, tag HTML, NFKC, sillabazione. Difende dall'evasione del NER.
-6. **Dati art. 9/10 (penale/salute/minori) mai a LLM cloud.** Classificazione in
-   `src/pipeline/riskScorer.ts:classifySensitivity`; con `allowCloudForSensitive=false` il
-   gate è applicato in `PracticeRegistry.isExposable`: niente Resource, niente read diretto,
-   niente indice/search per documenti sensibili.
+6. **Dati art. 9/10 (penale/salute/minori) mai a LLM cloud.** Il classificatore locale
+   (`src/pipeline/riskScorer.ts:classifySensitivity`) e' un suggerimento prudenziale; la
+   decisione finale puo' essere forzata localmente dall'avvocato e persiste su hash del
+   documento (`pratica.sensitivity.json`, senza path/nomi reali). Con
+   `allowCloudForSensitive=false` il gate effettivo e' applicato in
+   `PracticeRegistry.isExposable`: niente Resource, niente read diretto, niente indice/search
+   per documenti sensibili.
 7. **Valida ogni path** (`src/util/pathGuard.ts:assertAllowed`): solo cartelle in allowlist,
    blocco artefatti interni (`.anonymcp`), no traversal. URI/docId opachi (HMAC).
 8. **Quarantena di default** (`requireManualApproval`): un documento non è esposto come
@@ -43,6 +46,6 @@ devono mai rompersi**: ogni modifica va verificata contro questa lista. Vedi anc
 - Inv. 3 → `test/server.e2e.test.ts` (i tool de-anon non esistono).
 - Inv. 5 → `test/redteam.sanitizer.test.ts` (fuzzing).
 - Inv. 6 → `test/riskScorer.test.ts`, `test/fixtures.antileak.test.ts`,
-  `test/redteam.search.test.ts`.
+  `test/redteam.search.test.ts`, `test/sensitivityOverride.test.ts`.
 - Inv. 7 → `test/pathGuard.test.ts`, `test/redteam.docid.test.ts`.
 - Anti-leak generale → `test/fixtures.antileak.test.ts`, `test/redteam.search.test.ts`.

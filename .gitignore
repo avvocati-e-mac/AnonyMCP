@@ -12,6 +12,8 @@ anonymcp.config.json
 *.sqlite-journal
 *.entitydict.json
 *.approvals.json
+*.sensitivity.json
+*.writes.json
 *.searchindex.db
 *.searchindex.db-*
 

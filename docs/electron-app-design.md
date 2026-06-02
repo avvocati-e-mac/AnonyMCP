@@ -424,6 +424,13 @@ Regole operative:
 - se l'avvocato lascia `Da rivalutare`, nessuna esposizione cloud;
 - ogni decisione e' legata all'hash del documento; se il file cambia, la decisione decade.
 
+Implementazione locale prevista/avviata:
+
+- `pratica.sensitivity.json` salva solo `sourceHash`, decisione e timestamp;
+- nessuna motivazione testuale viene persistita di default, per evitare note identificanti;
+- `LocalReviewService` aggrega dashboard, review, pending write e lista dei documenti bloccati
+  per il cloud; e' una facciata locale, non un tool MCP.
+
 ```text
 +------------------------------------------------------------------+
 | Documenti da valutare / sensibili                                |
