@@ -31,6 +31,14 @@ MCP (resta MCP, client LLM esterno), non lo sostituisce. NON si generano file *a
 è pratico: AnonyMCP deve ricevere entità da pseudonimizzare (`NerFn`), non solo un modello che
 comprenda meglio il linguaggio legale. Vedi [ADR-0007](adr/0007-ner-model-target.md).
 
+**Gap M6/M7 emerso nel test Electron:** `better-sqlite3` è un modulo nativo e usa ABI diverse
+tra Node CLI e Electron. Con un solo `node_modules`, un rebuild per Electron fa funzionare FTS5
+nell'app ma rompe i test Node; un rebuild per Node ripristina la suite ma può degradare FTS5 in
+una nuova istanza Electron. Il packaging deve quindi includere un rebuild nativo Electron
+dedicato, mentre lo sviluppo deve avere comandi espliciti per tornare al build Node prima dei
+test. Fino a quel punto, la UI può funzionare con ricerca degradata, ma non va considerata
+produzione.
+
 ## M-Write — scrittura LLM→cartella
 
 L'LLM legge documenti pseudonimizzati e produce bozze (atti, contratti, ricerche). L'LLM **non
