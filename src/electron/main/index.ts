@@ -46,7 +46,7 @@ function csp(): string {
   if (isDev) {
     return [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "font-src 'self'",
@@ -310,6 +310,21 @@ function createWindow(): BrowserWindow {
   })
 
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('did-finish-load', () => {
+    log.info('Renderer caricato', { url: win.webContents.getURL() })
+  })
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    log.error('Caricamento renderer fallito', { errorCode, errorDescription, validatedURL })
+  })
+  win.webContents.on('console-message', (_event, ...args: unknown[]) => {
+    log.warn('Console renderer', { args })
+  })
+  win.webContents.on('render-process-gone', (_event, details) => {
+    log.error('Renderer process terminato', details)
+  })
+  win.webContents.on('preload-error', (_event, preloadPath, error) => {
+    log.error('Preload Electron fallito', { preloadPath, error: error.message })
+  })
   win.webContents.on('will-navigate', (event, url) => {
     if (!isTrustedRendererUrl(url)) {
       event.preventDefault()

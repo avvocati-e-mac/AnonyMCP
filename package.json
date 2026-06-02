@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "start": "node dist/index.js",
-    "app:dev": "electron-vite dev",
+    "app:dev": "electron-vite dev --entry=out/main/index.js",
     "app:build": "electron-vite build",
     "app:typecheck": "tsc -p tsconfig.electron.json --noEmit",
     "review": "node --import tsx src/tui/index.ts",
