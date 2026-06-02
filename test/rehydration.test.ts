@@ -72,4 +72,13 @@ describe('SessionManager.rehydrate', () => {
     expect(out.text).toBe('Testo generico senza placeholder.')
     expect(out.substituted).toBe(0)
   })
+
+  it('linkCoreference: il cognome eredita pseudonimo del nome completo', () => {
+    const s = new SessionManager()
+    const p = s.linkCoreference('Rossi', 'Mario Rossi', 'PERSONA')
+    expect(p).toBe('M. R.')
+    // Entrambe le occorrenze risolvono allo stesso pseudonimo.
+    expect(s.getOrCreatePseudonym('Rossi', 'PERSONA')).toBe('M. R.')
+    expect(s.getOrCreatePseudonym('Mario Rossi', 'PERSONA')).toBe('M. R.')
+  })
 })

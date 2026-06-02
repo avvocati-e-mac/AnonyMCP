@@ -50,6 +50,19 @@ interface SessionEntry {
    * Vedi ADR-0005. Uso LOCALE: mai esposta via MCP.
    */
   displayOriginal: string
+  /**
+   * Id interno dell'ENTITÀ (non del mention). Le occorrenze co-referenziate della
+   * stessa persona ("Mario Rossi" e il successivo "Rossi") condividono lo stesso
+   * entityId. Permette alla re-idratazione di distinguere la co-reference (stessa
+   * entità, da collassare) dall'omonimia di iniziali (entità diverse). RAM-only,
+   * mai serializzato nello pseudonimo né esposto via MCP. Vedi ADR-0005.
+   */
+  entityId?: string
+  /**
+   * Forma canonica dell'entità (longest mention del gruppo, es. "Mario Rossi" per
+   * il cluster {"Mario Rossi", "Rossi"}). È il valore con cui si ri-idrata. RAM-only.
+   */
+  canonical?: string
 }
 
 /** Esegue l'escape dei metacaratteri regex in una stringa letterale. */
@@ -87,6 +100,8 @@ export class SessionManager {
   private dictionary = new Map<string, SessionEntry>()
   /** Contatori fallback per tipo. */
   private counters = new Map<EntityType, number>()
+  /** Contatore degli id-entità interni (RAM-only, mai esposto). Vedi ADR-0005. */
+  private entityCounter = 0
   /**
    * Mappa: sha256(originale normalizzato) → pseudonimo, precaricata dalla cache
    * cifrata della pratica. Permette di riusare lo stesso pseudonimo tra sessioni
@@ -139,8 +154,22 @@ export class SessionManager {
       }
     }
 
-    this.dictionary.set(key, { pseudonym, type, displayOriginal: display })
+    // Le PERSONA ricevono un id-entità interno (co-reference): le occorrenze legate
+    // a questo nome erediteranno lo stesso entityId via linkCoreference. Il canonical
+    // iniziale è la mention stessa (potrà essere allungato da un mention più completo).
+    const entry: SessionEntry = { pseudonym, type, displayOriginal: display }
+    if (type === 'PERSONA') {
+      entry.entityId = this.newEntityId()
+      entry.canonical = display
+    }
+    this.dictionary.set(key, entry)
     return pseudonym
+  }
+
+  /** Genera un nuovo id-entità interno (RAM-only). */
+  private newEntityId(): string {
+    this.entityCounter += 1
+    return `ENT_${this.entityCounter}`
   }
 
   /**
@@ -150,6 +179,40 @@ export class SessionManager {
   preload(originalText: string, pseudonym: string, type: EntityType): void {
     const display = originalText.trim()
     this.dictionary.set(display.toLowerCase(), { pseudonym, type, displayOriginal: display })
+  }
+
+  /**
+   * Registra `mention` (es. "Rossi") come co-reference di `canonicalText`
+   * (es. "Mario Rossi"): eredita lo stesso pseudonimo e lo stesso entityId del
+   * canonical, così la re-idratazione le tratta come la STESSA entità (le collassa)
+   * e usa la forma canonica più completa. Vedi ADR-0005. Ritorna il pseudonimo.
+   * Se il canonical non è ancora noto, lo crea.
+   */
+  linkCoreference(mention: string, canonicalText: string, type: EntityType): string {
+    const canonKey = canonicalText.trim().toLowerCase()
+    // Assicura che il canonical esista e abbia un entityId (lo crea se serve).
+    const pseudonym = this.getOrCreatePseudonym(canonicalText, type)
+    const canonEntry = this.dictionary.get(canonKey)!
+    const entityId = canonEntry.entityId
+    // La forma canonica del gruppo è la mention più lunga (longest-mention).
+    const canonical =
+      canonEntry.canonical && canonEntry.canonical.length >= canonicalText.trim().length
+        ? canonEntry.canonical
+        : canonicalText.trim()
+    canonEntry.canonical = canonical
+
+    const mentionDisplay = mention.trim()
+    const mentionKey = mentionDisplay.toLowerCase()
+    if (!this.dictionary.has(mentionKey)) {
+      this.dictionary.set(mentionKey, {
+        pseudonym,
+        type,
+        displayOriginal: mentionDisplay,
+        entityId,
+        canonical
+      })
+    }
+    return pseudonym
   }
 
   /**
