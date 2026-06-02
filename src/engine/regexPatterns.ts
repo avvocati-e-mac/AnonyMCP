@@ -13,6 +13,9 @@ const JUDICIAL_ROLES =
   'presidente|consigliere|rel\\.?\\s*consigliere|giudice|sostituto\\s+procuratore|' +
   'procuratore|cancelliere|segretario|relatore|estensore|componente'
 
+const UNICODE_NAME_TOKEN = String.raw`[\p{Lu}][\p{L}'’.-]*`
+const NAME_INLINE_SEP = String.raw`[^\S\r\n]+`
+
 // ─── Header di sentenza ──────────────────────────────────────────────────────
 
 /** Nome/cognome seguito da ruolo giudiziario con trattini. */
@@ -34,6 +37,12 @@ export const PROCESSO_PARTE_PATTERN = new RegExp(
     'fallito|fallendo|istante|intervenuto)[:\\s,]+' +
     "([A-ZÀ-Ü][A-ZÀ-Üa-zà-ü']+(?:\\s+[A-ZÀ-Ü][A-ZÀ-Üa-zà-ü']+){1,3})",
   'gi'
+)
+
+/** Nome seguito da dati biografici/formali: "Mario Rossi, nato..." o "Mario Rossi, CF...". */
+export const BIOGRAPHIC_NAME_PATTERN = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(${UNICODE_NAME_TOKEN}(?:${NAME_INLINE_SEP}${UNICODE_NAME_TOKEN}){1,3})\s*,?\s+(?:nato|nata|codice\s+fiscale|residente|domiciliato|domiciliata)\b`,
+  'giu'
 )
 
 /** difeso/assistito dall'avv./avvocato + nome */
@@ -96,8 +105,10 @@ export const AVV_LISTA_PATTERN =
   /avvocat[oi]\s+((?:[A-Z][A-Za-zÀ-ÿ']+(?:\s+[A-Z][A-Za-zÀ-ÿ']+){1,3})(?:\s*,\s*(?:[A-Z][A-Za-zÀ-ÿ']+(?:\s+[A-Z][A-Za-zÀ-ÿ']+){1,3}))*)/gi
 
 /** Firma digitale PKI: "Firmato Da: NOME COGNOME Emesso Da:" */
-export const PKI_FIRMA_PATTERN =
-  /Firmato\s+Da:\s+([A-Z][A-ZÀ-Ü]+\s+[A-Z][A-ZÀ-Ü]+)\s+Emesso/gi
+export const PKI_FIRMA_PATTERN = new RegExp(
+  String.raw`Firmato\s+Da:\s+(${UNICODE_NAME_TOKEN}(?:${NAME_INLINE_SEP}${UNICODE_NAME_TOKEN}){1,3})\s+Emesso`,
+  'giu'
+)
 
 // ─── Estensioni AnonyMCP: entità contestuali legali (anti re-identificazione) ─
 
@@ -121,6 +132,7 @@ export const PROTOCOLLO_PATTERN =
 
 export const STRUCTURED_LEGAL_PATTERNS: { pattern: RegExp; type: EntityType }[] = [
   { pattern: PROCESSO_PARTE_PATTERN, type: 'PERSONA' },
+  { pattern: BIOGRAPHIC_NAME_PATTERN, type: 'PERSONA' },
   { pattern: DIFENSORE_PATTERN, type: 'PERSONA' },
   { pattern: ALLCAPS_NAME_PATTERN, type: 'PERSONA' },
   { pattern: LUOGO_NASCITA_PATTERN, type: 'LUOGO_NASCITA' },
@@ -132,6 +144,7 @@ export const STRUCTURED_LEGAL_PATTERNS: { pattern: RegExp; type: EntityType }[] 
   { pattern: CONTRATTO_PARTE_PATTERN, type: 'PERSONA' },
   { pattern: PERIZIA_SOGGETTO_PATTERN, type: 'PERSONA' },
   { pattern: TITOLO_NOME_PATTERN, type: 'PERSONA' },
+  { pattern: PKI_FIRMA_PATTERN, type: 'PERSONA' },
   { pattern: TARGA_PATTERN, type: 'TARGA' },
   { pattern: NUMERO_RUOLO_PATTERN, type: 'NUMERO_RUOLO' }
 ]
@@ -140,7 +153,7 @@ export const STRUCTURED_LEGAL_PATTERNS: { pattern: RegExp; type: EntityType }[] 
 
 /** Codice Fiscale — lenient (default; tollera distorsioni OCR). */
 export const CODICE_FISCALE_PATTERN_LENIENT =
-  /\b[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]\b/gi
+  /\b[A-Z]\s*[A-Z]\s*[A-Z]\s*[A-Z]\s*[A-Z]\s*[A-Z]\s*[0-9]\s*[0-9]\s*[A-Z]\s*[0-9]\s*[0-9]\s*[A-Z]\s*[0-9]\s*[0-9]\s*[0-9]\s*[A-Z]\b/gi
 
 /** Codice Fiscale — strict (valida mese e range giorno). */
 export const CODICE_FISCALE_PATTERN_STRICT =

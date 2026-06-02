@@ -9,7 +9,9 @@ import {
   TELEFONO_PATTERN,
   TARGA_PATTERN,
   NUMERO_RUOLO_PATTERN,
-  PROTOCOLLO_PATTERN
+  PROTOCOLLO_PATTERN,
+  BIOGRAPHIC_NAME_PATTERN,
+  PKI_FIRMA_PATTERN
 } from '../src/engine/regexPatterns.js'
 
 function matches(re: RegExp, text: string): string[] {
@@ -22,6 +24,11 @@ describe('regexPatterns', () => {
     expect(matches(CODICE_FISCALE_PATTERN_LENIENT, 'CF: RSSMRA80A01H501U.')).toContain(
       'RSSMRA80A01H501U'
     )
+  })
+
+  it('CODICE_FISCALE lenient riconosce un CF separato da spazi', () => {
+    const r = new RegExp(CODICE_FISCALE_PATTERN_LENIENT.source, CODICE_FISCALE_PATTERN_LENIENT.flags)
+    expect(r.exec('CF: LMNK RM85 B04Z 330U')?.[0]).toBe('LMNK RM85 B04Z 330U')
   })
 
   it('CODICE_FISCALE strict rifiuta una lettera-mese non valida', () => {
@@ -65,5 +72,30 @@ describe('regexPatterns', () => {
     const r = new RegExp(PROTOCOLLO_PATTERN.source, PROTOCOLLO_PATTERN.flags)
     const m = r.exec('prot. n. 55512/2026')
     expect(m?.[1]).toContain('55512')
+  })
+
+  it('BIOGRAPHIC_NAME riconosce nomi seguiti da dati biografici o formali', () => {
+    expect(
+      new RegExp(BIOGRAPHIC_NAME_PATTERN.source, BIOGRAPHIC_NAME_PATTERN.flags).exec(
+        'Giovanni Bianchi Esposito, nato a Salerno il 23 luglio 1968'
+      )?.[1]
+    ).toBe('Giovanni Bianchi Esposito')
+    expect(
+      new RegExp(BIOGRAPHIC_NAME_PATTERN.source, BIOGRAPHIC_NAME_PATTERN.flags).exec(
+        "Pietro Coppola D'Avena, codice fiscale ABCDEF80A01H501U"
+      )?.[1]
+    ).toBe("Pietro Coppola D'Avena")
+  })
+
+  it('BIOGRAPHIC_NAME supporta caratteri Unicode non Latin-1', () => {
+    const r = new RegExp(BIOGRAPHIC_NAME_PATTERN.source, BIOGRAPHIC_NAME_PATTERN.flags)
+    expect(r.exec('Đorđe Petrović, residente in Via Zamboni 10')?.[1]).toBe('Đorđe Petrović')
+  })
+
+  it('PKI_FIRMA riconosce firme digitali con piu token', () => {
+    const r = new RegExp(PKI_FIRMA_PATTERN.source, PKI_FIRMA_PATTERN.flags)
+    expect(r.exec('Firmato Da: GIOVANNI BIANCHI ESPOSITO Emesso Da: ARUBAPEC')?.[1]).toBe(
+      'GIOVANNI BIANCHI ESPOSITO'
+    )
   })
 })

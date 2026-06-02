@@ -71,6 +71,25 @@ describe('detectEntities + applyPseudonyms', () => {
     expect(out).not.toMatch(/\bRossi\b/)
   })
 
+  it('pseudonimizza nomi biografici senza titolo anche senza NER', async () => {
+    const text = `Giovanni Bianchi Esposito, nato a Salerno il 23 luglio 1968.
+Rosa Iannone, nata a Salerno il 2 maggio 1970.`
+    const { entities } = await detectEntities(text)
+    const out = applyPseudonyms(text, entities)
+
+    expect(out).not.toContain('Giovanni Bianchi Esposito')
+    expect(out).not.toContain('Rosa Iannone')
+  })
+
+  it('pseudonimizza un codice fiscale separato da spazi', async () => {
+    const text = 'Destinatario: Karim El Mansouri, codice fiscale LMNK RM85 B04Z 330U.'
+    const { entities } = await detectEntities(text)
+    const out = applyPseudonyms(text, entities)
+
+    expect(out).not.toContain('LMNK RM85 B04Z 330U')
+    expect(out).toMatch(/CF_\d{3}/)
+  })
+
   it('NER iniettabile: applica veto filter alle entità ner', async () => {
     const ner = () => [
       { type: 'PERSONA' as const, text: 'ricorrente', source: 'ner' as const },

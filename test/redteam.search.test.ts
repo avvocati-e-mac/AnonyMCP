@@ -41,6 +41,14 @@ describe('search guard anti-PII', () => {
     expect(res.isError).toBe(true)
   })
 
+  it('rifiuta una query che è un codice fiscale separato da spazi', async () => {
+    const res = await client.callTool({
+      name: 'anonymcp_search',
+      arguments: { query: 'RSS MRA 80A 01H 501U' }
+    })
+    expect(res.isError).toBe(true)
+  })
+
   it('rifiuta una query che è un IBAN', async () => {
     const res = await client.callTool({
       name: 'anonymcp_search',
