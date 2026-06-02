@@ -74,6 +74,9 @@ describe('M-Write red team', () => {
     expect(text).not.toContain(REAL_NAME)
     expect(text).not.toContain(REAL_CF)
     expect(res.structuredContent.staged).toBe(true)
+    expect(res.structuredContent.approvalCommand).toContain('npm run review')
+    expect(res.structuredContent.approvalCommand).toContain('--practice causa-test')
+    expect(res.structuredContent.codexAppInstruction).toMatch(/staging|Terminale|review TUI/i)
     // Il file finale NON esiste finché non promosso.
     expect(existsSync(join(dir, 'Ricerche/bozza.md'))).toBe(false)
     // In staging, invece, il contenuto è RE-IDRATATO (valori reali sul disco locale).

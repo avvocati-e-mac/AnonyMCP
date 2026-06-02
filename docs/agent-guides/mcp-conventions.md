@@ -33,6 +33,9 @@ I tool: `list_folders`, `scan_practice`, `get_practice_status`, `search`, e (M-W
 - **Vietati**: tool di de-anonimizzazione o che restituiscano la mappa/valori reali. La
   re-idratazione di `write_document` è un passaggio LOCALE lato server e il suo return non
   contiene mai PII (vedi ADR-0005): non è un tool di de-anon.
+- Se `write_document` mette una bozza in staging, il return può includere `approvalCommand`:
+  è solo il comando locale `npm run review -- --practice ... --config ...` da mostrare
+  all'utente in Codex app/Claude per confermare la promozione; non deve contenere PII.
 
 ## Annotations
 | Annotation | Significato |

@@ -48,7 +48,7 @@ function reviewInstructions(
 ): { messaggio: string; come_fare: string[]; nota: string } {
   // Comando completo: entra nella cartella del progetto e passa la config esatta,
   // così funziona anche quando il server è avviato da Claude Desktop con un cwd diverso.
-  const cmd = `cd "${projectDir}" && npm run review -- --practice ${folderId} --config "${configPath}"`
+  const cmd = reviewCommand(projectDir, folderId, configPath)
   return {
     messaggio: `Ci sono ${count} document${count === 1 ? 'o' : 'i'} da controllare prima che io possa leggerli.`,
     come_fare: [
@@ -59,6 +59,24 @@ function reviewInstructions(
       '4. Premi Invio per confermare. Poi torna qui e richiedimi quello che ti serve (non serve riavviarmi).'
     ],
     nota: "Importante: NON modificare il comando, deve includere '--config' con il percorso corretto."
+  }
+}
+
+/** Comando locale per revisionare documenti e promuovere pending write della pratica. */
+function reviewCommand(projectDir: string, folderId: string, configPath: string): string {
+  return `cd "${projectDir}" && npm run review -- --practice ${folderId} --config "${configPath}"`
+}
+
+function writeApprovalInstructions(
+  folderId: string,
+  projectDir: string,
+  configPath: string
+): { approvalCommand: string; codexAppInstruction: string } {
+  const approvalCommand = reviewCommand(projectDir, folderId, configPath)
+  return {
+    approvalCommand,
+    codexAppInstruction:
+      'Comunica all’utente che la bozza è in staging e che, per salvarla definitivamente, deve eseguire questo comando locale nel Terminale. Il comando apre la review TUI e permette di confermare le bozze pending.'
   }
 }
 
@@ -317,6 +335,7 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
           relPath: out.relPath,
           rehydratedEntities: out.rehydratedCount,
           ambiguousPlaceholders: out.ambiguous,
+          ...(out.staged ? writeApprovalInstructions(folderId, projectDir, configPath) : {}),
           note:
             (out.staged
               ? 'In attesa di conferma umana prima del salvataggio definitivo.'
