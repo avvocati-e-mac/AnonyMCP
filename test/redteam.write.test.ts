@@ -41,6 +41,17 @@ beforeAll(async () => {
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('M-Write red team', () => {
+  it('lo status non suggerisce piu comandi Terminale/TUI per la review', async () => {
+    const res: any = await client.callTool({
+      name: 'anonymcp_get_practice_status',
+      arguments: { folderId: 'causa-test' }
+    })
+    const text = JSON.stringify(res)
+    expect(res.structuredContent.reviewApp).toBe('AnonyMCP Electron')
+    expect(res.structuredContent.come_fare.join(' ')).toMatch(/Dashboard generale|Da review/i)
+    expect(text).not.toMatch(/npm run review|Terminale|review TUI/i)
+  })
+
   it('blocca il path traversal con errore azionabile', async () => {
     const res: any = await client.callTool({
       name: 'anonymcp_write_document',
@@ -74,9 +85,11 @@ describe('M-Write red team', () => {
     expect(text).not.toContain(REAL_NAME)
     expect(text).not.toContain(REAL_CF)
     expect(res.structuredContent.staged).toBe(true)
-    expect(res.structuredContent.approvalCommand).toContain('npm run review')
-    expect(res.structuredContent.approvalCommand).toContain('--practice causa-test')
-    expect(res.structuredContent.codexAppInstruction).toMatch(/staging|Terminale|review TUI/i)
+    expect(res.structuredContent.approvalCommand).toBeUndefined()
+    expect(res.structuredContent.approvalUi).toBe('AnonyMCP Electron')
+    expect(res.structuredContent.userFacingStatus).toMatch(/Bozza LLM in attesa/i)
+    expect(res.structuredContent.codexAppInstruction).toMatch(/UI locale AnonyMCP|dashboard Electron/i)
+    expect(text).not.toMatch(/npm run review|Terminale|review TUI/i)
     // Il file finale NON esiste finché non promosso.
     expect(existsSync(join(dir, 'Ricerche/bozza.md'))).toBe(false)
     // In staging, invece, il contenuto è RE-IDRATATO (valori reali sul disco locale).

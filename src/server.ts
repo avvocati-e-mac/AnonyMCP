@@ -35,48 +35,44 @@ function docUri(folderId: string, docId: string): string {
   return `${RESOURCE_SCHEME}://practice/${folderId}/${docId}`
 }
 
-/**
- * Istruzioni di revisione passo-passo per un avvocato non esperto di informatica.
- * Claude le riceve nello status e le riformula in linguaggio naturale e rassicurante.
- * Nella Fase 2 (app Electron) questo diventerà un pulsante "Rivedi documenti".
- */
+/** Istruzioni LLM-facing: la review si fa nella UI locale, non dal modello. */
 function reviewInstructions(
   folderId: string,
-  count: number,
-  projectDir: string,
-  configPath: string
-): { messaggio: string; come_fare: string[]; nota: string } {
-  // Comando completo: entra nella cartella del progetto e passa la config esatta,
-  // così funziona anche quando il server è avviato da Claude Desktop con un cwd diverso.
-  const cmd = reviewCommand(projectDir, folderId, configPath)
+  count: number
+): { messaggio: string; reviewApp: string; come_fare: string[]; nota: string } {
   return {
-    messaggio: `Ci sono ${count} document${count === 1 ? 'o' : 'i'} da controllare prima che io possa leggerli.`,
+    messaggio: `Ci sono ${count} document${count === 1 ? 'o' : 'i'} da controllare nella UI locale prima che io possa leggerli.`,
+    reviewApp: 'AnonyMCP Electron',
     come_fare: [
-      "1. Apri l'applicazione Terminale sul tuo Mac (cercala con Spotlight: ⌘+Spazio, scrivi 'Terminale').",
-      '2. Copia e incolla questo comando (tutto su una riga), poi premi Invio:',
-      `   ${cmd}`,
-      '3. Controlla le parole evidenziate: spunta quelle corrette, togli quelle sbagliate.',
-      '4. Premi Invio per confermare. Poi torna qui e richiedimi quello che ti serve (non serve riavviarmi).'
+      "1. Apri l'app AnonyMCP sul Mac.",
+      `2. Nella Dashboard generale filtra "Da review" o apri la pratica ${folderId}.`,
+      '3. Apri ogni documento da valutare e confronta originale locale e testo pseudonimizzato.',
+      '4. Conferma/escludi le entità rilevate, aggiungi quelle mancanti e decidi se il documento è sensibile.',
+      '5. Premi "Applica e approva"; poi torna qui e chiedimi di rileggere la pratica.'
     ],
-    nota: "Importante: NON modificare il comando, deve includere '--config' con il percorso corretto."
+    nota:
+      'Io non posso approvare documenti, leggere documenti in quarantena o vedere testo originale. ' +
+      'Dopo la review posso leggere solo i documenti approvati e non bloccati dalla policy cloud.'
   }
 }
 
-/** Comando locale per revisionare documenti e promuovere pending write della pratica. */
-function reviewCommand(projectDir: string, folderId: string, configPath: string): string {
-  return `cd "${projectDir}" && npm run review -- --practice ${folderId} --config "${configPath}"`
-}
-
-function writeApprovalInstructions(
-  folderId: string,
-  projectDir: string,
-  configPath: string
-): { approvalCommand: string; codexAppInstruction: string } {
-  const approvalCommand = reviewCommand(projectDir, folderId, configPath)
+function writeApprovalInstructions(folderId: string, relPath: string): {
+  approvalUi: string
+  userFacingStatus: string
+  reviewSteps: string[]
+  codexAppInstruction: string
+} {
   return {
-    approvalCommand,
+    approvalUi: 'AnonyMCP Electron',
+    userFacingStatus: 'Bozza LLM in attesa di conferma locale',
+    reviewSteps: [
+      "1. Apri l'app AnonyMCP sul Mac.",
+      `2. Vai alla Dashboard generale e apri "Bozze LLM in attesa" per la pratica ${folderId}.`,
+      `3. Apri la bozza ${relPath}, controlla il contenuto re-idratato localmente e conferma solo se corretto.`,
+      '4. Dopo la conferma locale il file viene promosso dalla bozza in attesa alla cartella finale della pratica.'
+    ],
     codexAppInstruction:
-      'Comunica all’utente che la bozza è in staging e che, per salvarla definitivamente, deve eseguire questo comando locale nel Terminale. Il comando apre la review TUI e permette di confermare le bozze pending.'
+      'Comunica all’utente che la bozza LLM è in attesa di conferma nella UI locale AnonyMCP. Usa la dashboard Electron per la conferma.'
   }
 }
 
@@ -87,16 +83,10 @@ export interface BuiltServer {
 
 export interface BuildServerOptions {
   cachePassphrase?: string
-  /** Cartella del progetto AnonyMCP (per il comando di review da suggerire). */
-  projectDir?: string
-  /** Percorso assoluto della config attiva (per il comando di review). */
-  configPath?: string
 }
 
 export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions = {}): BuiltServer {
   const { cachePassphrase } = options
-  const projectDir = options.projectDir ?? process.cwd()
-  const configPath = options.configPath ?? 'anonymcp.config.json'
   const registry = new PracticeRegistry(
     config.folders,
     config.requireManualApproval,
@@ -125,7 +115,7 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
     'documento-pseudonimizzato',
     new ResourceTemplate(`${RESOURCE_SCHEME}://practice/{folderId}/{docId}`, {
       list: () => {
-        // Rilegge le approvazioni dal disco: vede quelle fatte dalla TUI senza riavvio.
+        // Rilegge le approvazioni dal disco: vede quelle fatte dalla UI locale senza riavvio.
         registry.refreshAllApprovals()
         return {
           resources: registry.exposableDocs().map(({ folderId, doc }) => ({
@@ -225,11 +215,11 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
       try {
         registry.refreshApprovals(folderId)
         const status = registry.status(folderId)
-        // Se ci sono documenti da revisionare, allega istruzioni passo-passo pensate
-        // per un avvocato non esperto di informatica. Claude le riformula all'utente.
+        // Se ci sono documenti da revisionare, allega istruzioni passo-passo per
+        // l'app locale AnonyMCP. Il modello non deve suggerire flussi CLI di fase 1.
         const payload =
           status.reviewRequired > 0
-            ? { ...status, ...reviewInstructions(folderId, status.reviewRequired, projectDir, configPath) }
+            ? { ...status, ...reviewInstructions(folderId, status.reviewRequired) }
             : status
         return {
           content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
@@ -274,7 +264,7 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
       }
       // Ricerca BM25 (SQLite FTS5) su tutte le pratiche: solo i documenti APPROVATI
       // sono indicizzati → hard gate implicito (vedi ADR-0002). Ritorna chunk ranked.
-      registry.refreshAllApprovals() // vede le approvazioni della TUI senza riavvio
+      registry.refreshAllApprovals() // vede le approvazioni della UI locale senza riavvio
       const hits: { uri: string; excerpt: string }[] = []
       for (const folder of registry.listFolders()) {
         for (const hit of registry.search(folder.id, query, limit)) {
@@ -295,7 +285,7 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
   // M-Write (ADR-0005): salva una bozza testuale prodotta dall'LLM nella cartella
   // di pratica. La bozza viene RE-IDRATATA (pseudonimo→reale) lato server PRIMA di
   // scrivere — passaggio locale, mai esposto via MCP. Con requireManualApproval la
-  // scrittura va in staging e attende conferma umana (TUI). Il return NON contiene PII.
+  // scrittura va in staging e attende conferma umana nella UI locale. Il return NON contiene PII.
   server.registerTool(
     'anonymcp_write_document',
     {
@@ -304,7 +294,7 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
         'Salva un file di TESTO (bozza di atto, contratto, ricerca) dentro la cartella di una ' +
         'pratica. Estensioni ammesse: .md, .txt, .tex, .csv, .json, .xml, .html. Usa i ' +
         'placeholder (es. "M. R."): il server ripristina i nomi reali in locale prima di salvare. ' +
-        'Con la quarantena attiva il file resta in attesa di conferma umana.',
+        "Con la quarantena attiva il file resta in attesa di conferma nell'app locale AnonyMCP.",
       inputSchema: {
         folderId: z.string().describe('Id della pratica (vedi list_folders)'),
         relPath: z
@@ -335,7 +325,7 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
           relPath: out.relPath,
           rehydratedEntities: out.rehydratedCount,
           ambiguousPlaceholders: out.ambiguous,
-          ...(out.staged ? writeApprovalInstructions(folderId, projectDir, configPath) : {}),
+          ...(out.staged ? writeApprovalInstructions(folderId, out.relPath) : {}),
           note:
             (out.staged
               ? 'In attesa di conferma umana prima del salvataggio definitivo.'

@@ -68,7 +68,8 @@ ri-idratato → **M-Write-Binary** (milestone separata con proprio ADR).
 
 - Path validato con `pathGuard` (`isInside` nella pratica, no traversal/assoluti/artefatti).
 - Allowlist di estensioni testuali; niente eseguibili/config.
-- Quarantena: con `requireManualApproval`, scrittura in staging + approvazione umana via TUI.
+- Quarantena: con `requireManualApproval`, scrittura in staging + approvazione umana dalla
+  UI locale AnonyMCP/Electron (TUI solo fallback tecnico/dev, non istruzione da mostrare al LLM).
 - Pending write protetto da `contentHash`: se il file in staging cambia dopo la registrazione,
   la promozione viene rifiutata e la bozza va rigenerata.
 - Una seconda bozza sullo stesso `relPath` non sostituisce lo staging, salvo `overwrite=true`.

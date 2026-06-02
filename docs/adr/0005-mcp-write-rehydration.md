@@ -47,7 +47,8 @@ binari (.docx) il client genera il file da sé e lo invia in **base64** (zip). V
    reversibilità locale). Il contenuto ri-idratato **non torna mai** all'LLM.
 4. **Quarantena (invariante #8)**: con `requireManualApproval`, il file ri-idratato va in una
    sottocartella di staging (`.anonymcp-staging/`, artefatto mai esposto come resource) e si
-   registra un *pending write*; la TUI lo promuove alla destinazione finale su conferma umana.
+   registra un *pending write*; la UI locale AnonyMCP lo promuove alla destinazione finale su
+   conferma umana.
    In auto-approve si scrive direttamente (coerente con lo scan).
    Il pending contiene l'hash del contenuto in staging: se il file cambia prima della conferma,
    la promozione viene rifiutata. Un secondo staging sullo stesso `relPath` è rifiutato salvo
@@ -63,8 +64,9 @@ binari (.docx) il client genera il file da sé e lo invia in **base64** (zip). V
 # Alternative considerate
 
 - **Tool MCP esplicito di de-anonimizzazione / get_mapping**: rifiutata — viola l'invariante #3.
-- **Pending write tenuto in RAM**: rifiutata — non rivedibile dalla TUI e perso al riavvio;
-  lo staging su disco è ispezionabile dall'avvocato (vera quarantena human-in-the-loop).
+- **Pending write tenuto in RAM**: rifiutata — non rivedibile dalla UI locale e perso al
+  riavvio; lo staging su disco è ispezionabile dall'avvocato (vera quarantena
+  human-in-the-loop).
 - **L'LLM scrive direttamente su disco**: rifiutata — niente re-idratazione controllata né
   guardie di path; l'LLM non deve toccare il filesystem.
 - **Ricevere i binari in base64 e ri-idratare dentro lo zip/XML**: rifiutata — fragile (i
@@ -78,7 +80,7 @@ binari (.docx) il client genera il file da sé e lo invia in **base64** (zip). V
   [ADR-0006](0006-entity-consolidation-rehydration.md) (consolidamento via id-entità interno).
 - Nuovi `src/practice/writeService.ts` e `writeApprovalStore.ts`; nuovi metodi nel
   `PracticeRegistry` (`stageWrite`/`listPendingWrites`/`promoteWrite`, LOCALI, non tool MCP).
-- La TUI estende le azioni per promuovere le scritture in staging.
+- La UI locale AnonyMCP espone le azioni per promuovere le scritture in staging.
 - La promozione verifica `contentHash` e non sovrascrive un file finale creato dopo lo staging
   salvo che il pending sia nato con `overwrite=true`.
 - I tool MCP passano da 4 a 6: aggiornare doc e test e2e.

@@ -30,6 +30,9 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
   più cartelle e scelta alternativa tramite finestra di sistema.
 - Review locale delle bozze LLM in staging: la UI mostra la bozza re-idratata solo in locale e
   consente la promozione esplicita nella cartella finale della pratica.
+- I payload MCP verso Claude/Codex non suggeriscono piu' comandi Terminale/TUI per review e
+  bozze in attesa: indicano invece la dashboard Electron di AnonyMCP come punto di conferma
+  locale.
 - La dashboard Electron mostra percorso/hash della configurazione e ID pratiche locali, cosi'
   l'avvocato puo' accorgersi se l'app e il client MCP esterno stanno leggendo configurazioni
   diverse.
@@ -42,7 +45,8 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 - Strumenti MCP `anonymcp_write_document` e `anonymcp_create_folder`: l'LLM salva bozze
   testuali nella pratica senza toccare il disco. La bozza è **re-idratata** (pseudonimo→reale)
   in locale prima di scrivere; con `requireManualApproval` va in staging e attende conferma
-  umana via TUI. Formati testuali (`.md/.txt/.tex/.csv/.json/.xml/.html`). Vedi **ADR-0005**.
+  umana dalla UI locale AnonyMCP. Formati testuali (`.md/.txt/.tex/.csv/.json/.xml/.html`).
+  Vedi **ADR-0005**.
 - **Consolidamento entità (id interno)**: la co-reference ("Mario Rossi" e il successivo
   "Rossi") condivide un id-entità interno (RAM-only, mai esposto), così la re-idratazione la
   collassa correttamente e usa la forma canonica. L'omonimia di iniziali resta distinta; il
