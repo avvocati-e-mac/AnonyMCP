@@ -20,6 +20,7 @@ MCP (resta MCP, client LLM esterno), non lo sostituisce. NON si generano file *a
 | M1 | Parser input PDF/DOCX/ODT | Estrarre testo da binari e alimentare `processFile` (riuso parser Anonimator) | pianificata |
 | M2 | OCR scansioni | PDF scansionati → testo via Tesseract | pianificata |
 | M3 | NER in worker | `italian-ner-xxl-v2` (ONNX) come `NerFn` in worker isolato | pianificata |
+| M4-Design | Design app Electron | Specifica UI/funzionamento, schermate ASCII, sicurezza Electron e red-team in [`electron-app-design`](electron-app-design.md) | documentata |
 | M4 | Scaffold Electron | App che avvolge il server MCP stdio (main/preload sandbox) | pianificata |
 | M5 | UI review entità | Review grafica (sostituisce TUI); consenso cartelle; log live | pianificata |
 | M6 | Hardening produzione | keychain OS, audit trail, sandbox parser, DPIA/registro | pianificata |
