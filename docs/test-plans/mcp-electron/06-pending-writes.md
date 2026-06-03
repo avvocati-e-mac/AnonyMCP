@@ -53,9 +53,12 @@ Passi:
 2. Leggere il pannello dettaglio.
 3. Verificare path relativa, file name, hashMatches e contenuto.
 4. Verificare se il copy chiarisce che la bozza e' locale e re-idratata.
+5. Verificare che compaia un warning esplicito: il testo puo' contenere dati reali reinseriti
+   localmente e il LLM ha lavorato sui pseudonimi.
 
 Atteso:
-L'utente capisce che sta vedendo una bozza locale destinata alla cartella pratica.
+L'utente capisce che sta vedendo una bozza locale destinata alla cartella pratica e che il testo
+puo' contenere dati reali sul computer, non ricevuti dal LLM.
 
 Red team:
 Cercare ambiguita' tra `testo ricevuto dal LLM` e `testo re-idratato locale`.

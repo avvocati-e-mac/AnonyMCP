@@ -91,6 +91,13 @@ describe('search guard anti-PII', () => {
     const res = await client.callTool({ name: 'anonymcp_search', arguments: { query: 'CF_001' } })
     expect(res.isError).toBeFalsy()
   })
+
+  it('non riecheggia la query raw nel payload MCP', async () => {
+    const res = await client.callTool({ name: 'anonymcp_search', arguments: { query: 'CF_001' } })
+    const text = (res.content as { type: string; text: string }[])[0]!.text
+    expect(res.structuredContent).not.toHaveProperty('query')
+    expect(text).not.toContain('"query"')
+  })
 })
 
 describe('reviewList è locale, mai esposta via MCP', () => {

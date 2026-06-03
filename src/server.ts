@@ -282,7 +282,7 @@ export function buildServer(config: AnonyMcpConfig, options: BuildServerOptions 
         }
         if (hits.length >= limit) break
       }
-      const payload = { query, count: hits.length, results: hits }
+      const payload = { count: hits.length, results: hits }
       return {
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
         structuredContent: payload

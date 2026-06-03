@@ -100,12 +100,13 @@ Passi:
 
 1. Aprire review di un documento suggerito sensibile.
 2. Cliccare `Non sensibile nel contesto`.
-3. Verificare se la UI aggiorna stato, mostra conferma o spiega l'effetto cloud.
-4. Non usare dati reali.
+3. Verificare che la UI chieda una conferma forte quando il documento era suggerito sensibile.
+4. Verificare che la conferma spieghi l'effetto cloud dopo la review.
+5. Non usare dati reali.
 
 Atteso:
 L'utente capisce che sta prendendo una decisione professionale e che puo' incidere sulla
-disponibilita' al cloud dopo review.
+disponibilita' al cloud dopo review. Un click accidentale non deve bastare.
 
 Red team:
 Valutare se un click accidentale puo' sbloccare il documento senza conferma forte.

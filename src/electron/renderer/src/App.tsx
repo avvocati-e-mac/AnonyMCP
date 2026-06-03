@@ -581,6 +581,17 @@ function ReviewDetailPanel({
   const pseudonymRef = useRef<HTMLDivElement | null>(null)
   const syncingRef = useRef(false)
 
+  function requestSensitivityChange(decision: 'sensitive' | 'not_sensitive' | null): void {
+    if (decision === 'not_sensitive' && (detail.sensitive || detail.sensitiveSuggested)) {
+      const confirmed = window.confirm(
+        'Stai dichiarando non sensibile un documento che AnonyMCP ha segnalato come possibile dato sensibile. ' +
+          'Dopo la review, questa scelta puo renderlo disponibile al LLM cloud in forma pseudonimizzata. Confermi la decisione professionale?'
+      )
+      if (!confirmed) return
+    }
+    onSetSensitivity(decision)
+  }
+
   function syncScroll(source: HTMLDivElement, target: HTMLDivElement | null): void {
     if (!target || syncingRef.current) return
     syncingRef.current = true
@@ -707,13 +718,16 @@ function ReviewDetailPanel({
               AnonyMCP suggerisce; la decisione finale sul contesto e' dell'avvocato.
             </p>
             <div className="mt-2 grid gap-2">
-              <button type="button" onClick={() => onSetSensitivity('sensitive')} className="rounded-md border border-amber-300 px-3 py-2 text-left text-sm text-amber-900 hover:bg-amber-50">
+              <button type="button" onClick={() => requestSensitivityChange('sensitive')} className="rounded-md border border-amber-300 px-3 py-2 text-left text-sm text-amber-900 hover:bg-amber-50">
                 Sensibile - blocca cloud
               </button>
-              <button type="button" onClick={() => onSetSensitivity('not_sensitive')} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+              <button type="button" onClick={() => requestSensitivityChange('not_sensitive')} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
                 Non sensibile nel contesto
               </button>
-              <button type="button" onClick={() => onSetSensitivity(null)} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
+              <p className="text-xs text-slate-500">
+                Se AnonyMCP ha suggerito sensibilita', questa scelta richiede conferma professionale.
+              </p>
+              <button type="button" onClick={() => requestSensitivityChange(null)} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
                 Usa suggerimento
               </button>
             </div>
@@ -763,6 +777,13 @@ function PendingWritePanel({
         </button>
       </div>
       <div className="p-5">
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-medium">Bozza re-idratata locale</div>
+          <p className="mt-1">
+            Il testo qui sotto puo contenere dati reali reinseriti da AnonyMCP su questo computer.
+            Il LLM ha lavorato sui pseudonimi: controlla la bozza prima di salvarla nella pratica.
+          </p>
+        </div>
         {!detail.hashMatches ? (
           <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             La bozza in staging e' cambiata dopo la registrazione. Rigenera la bozza prima di confermare.
