@@ -7,6 +7,11 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+## [0.1.0-beta.1] - 2026-06-03
+
+> Beta desktop di test: non ancora deployabile in produzione legale. Serve a provare la UI
+> Electron, il flusso di review locale e il packaging multipiattaforma.
+
 ### Aggiunto — Fase 2 / Electron app
 - Baseline Electron/Vite/React/Tailwind/Zustand con main/preload/renderer separati,
   `contextIsolation`, `sandbox`, `nodeIntegration=false`, CSP restrittiva e IPC nominale
@@ -104,4 +109,5 @@ Prima release pubblica — **Fase 1** (server MCP stdio standalone, beta).
   (invarianti, threat model STRIDE), convenzioni MCP/codice/testing.
 - **172 test** (unit, anti-leak, e2e, redteam).
 
+[0.1.0-beta.1]: https://github.com/avvocati-e-mac/AnonyMCP/releases/tag/v0.1.0-beta.1
 [0.1.0]: https://github.com/avvocati-e-mac/AnonyMCP/releases/tag/v0.1.0

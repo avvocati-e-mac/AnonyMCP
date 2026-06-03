@@ -22,7 +22,9 @@ studi legali italiani (civile, penale, tributario, amministrativo).
 
 - [Cos'è e come funziona](#cosè-e-come-funziona)
 - [Gli strumenti MCP](#gli-strumenti-mcp)
-- [Installazione passo-passo](#installazione-passo-passo-fase-1)
+- [Installazione beta app desktop](#installazione-beta-app-desktop-v010-beta1)
+- [Installazione da sorgente](#installazione-da-sorgente-fase-1)
+- [Problemi comuni](#problemi-comuni-beta-desktop)
 - [Collegare AnonyMCP a Claude Desktop](#collegare-anonymcp-a-claude-desktop)
 - [Revisione e approvazione dei documenti](#revisione-e-approvazione-dei-documenti)
 - [Sicurezza by design](#sicurezza-by-design)
@@ -34,8 +36,9 @@ studi legali italiani (civile, penale, tributario, amministrativo).
 ## Cos'è e come funziona
 
 AnonyMCP è un **filtro** che si interpone tra i documenti dell'avvocato e l'LLM cloud.
-Non è un'app con una finestra: è un **server MCP** che un client (Claude Desktop, Cursor,
-ecc.) avvia in background e con cui dialoga via JSON-RPC sul canale stdio.
+Il cuore tecnico è un **server MCP** che un client (Claude Desktop, Cursor, ecc.) avvia in
+background e con cui dialoga via JSON-RPC sul canale stdio. La beta desktop aggiunge una
+finestra locale per configurare le pratiche e fare review senza editare file JSON a mano.
 
 ```
   Documenti pratica          AnonyMCP (locale)              LLM cloud
@@ -67,10 +70,135 @@ AnonyMCP espone al client questi strumenti (e i documenti come *Resources*):
 Non esiste — di proposito — alcuno strumento di de-anonimizzazione. La re-idratazione di
 `write_document` è un passaggio **locale** lato server: l'LLM non riceve mai i dati reali.
 
-## Installazione passo-passo (Fase 1)
+## Installazione beta app desktop v0.1.0-beta.1
 
-> Questa fase è pensata per utenti tecnici (richiede Node.js e l'uso del terminale).
-> Per avvocati non tecnici è prevista la **Fase 2** con un'app grafica (vedi roadmap).
+> **Beta di test.** Questa versione serve a provare l'app desktop e il flusso di review.
+> Non usarla ancora con pratiche reali o documenti sensibili di clienti. Usa copie di test o
+> documenti sintetici.
+
+La beta desktop non richiede Node.js o Terminale per l'uso normale. Scarica il file giusto dalla
+pagina [Releases](https://github.com/avvocati-e-mac/AnonyMCP/releases):
+
+| File | Computer |
+|---|---|
+| `AnonyMCP-0.1.0-beta.1-arm64.dmg` | Mac Apple Silicon (M1/M2/M3/M4) |
+| `AnonyMCP-0.1.0-beta.1-x64.dmg` | Mac Intel |
+| `AnonyMCP-0.1.0-beta.1-windows-x64-setup.exe` | Windows 10/11 a 64 bit |
+| `AnonyMCP-0.1.0-beta.1-linux-x64.AppImage` | Linux a 64 bit |
+| `anonymcp-server-0.1.0-beta.1.tgz` | Solo utenti tecnici/server MCP |
+
+Per capire quale Mac hai: menu Apple -> **Informazioni su questo Mac**. Se leggi "Chip Apple
+M..." scarica `arm64`; se leggi "Processore Intel" scarica `x64`.
+
+### macOS - installazione senza firma Apple
+
+Questa beta non è ancora firmata né notarizzata con Apple Developer ID. macOS può bloccarla anche
+se è stata scaricata dalla pagina GitHub ufficiale.
+
+1. Scarica il file `.dmg` corretto per il tuo Mac.
+2. Apri il `.dmg` con doppio click.
+3. Trascina `AnonyMCP.app` nella cartella **Applicazioni**.
+4. Apri **Applicazioni**, fai click destro su `AnonyMCP.app` e scegli **Apri**.
+5. Se macOS mostra un avviso, scegli ancora **Apri** se disponibile.
+6. Se macOS blocca l'app senza dare il pulsante, apri **Impostazioni di Sistema -> Privacy e Sicurezza** e premi **Apri comunque** vicino all'avviso su AnonyMCP.
+
+Se continua a non aprirsi, usa questo comando una sola volta nel Terminale:
+
+```bash
+sudo xattr -dr com.apple.quarantine /Applications/AnonyMCP.app
+```
+
+Poi riapri AnonyMCP dalla cartella Applicazioni.
+
+### Windows - installazione senza firma Microsoft
+
+Questa beta non è ancora firmata con un certificato Microsoft. Windows SmartScreen può mostrare
+"Windows ha protetto il PC".
+
+1. Scarica `AnonyMCP-0.1.0-beta.1-windows-x64-setup.exe`.
+2. Apri il file con doppio click.
+3. Se appare SmartScreen, premi **Ulteriori informazioni**.
+4. Premi **Esegui comunque**.
+5. Segui la procedura guidata dell'installer.
+6. Avvia AnonyMCP dal menu Start o dall'icona sul Desktop.
+
+Se l'antivirus mette in quarantena l'installer, ripristinalo solo se il file è stato scaricato
+dalla pagina GitHub ufficiale `avvocati-e-mac/AnonyMCP`.
+
+### Linux - AppImage
+
+1. Scarica `AnonyMCP-0.1.0-beta.1-linux-x64.AppImage`.
+2. Rendi eseguibile il file.
+3. Avvialo.
+
+```bash
+chmod +x AnonyMCP-0.1.0-beta.1-linux-x64.AppImage
+./AnonyMCP-0.1.0-beta.1-linux-x64.AppImage
+```
+
+Su alcune distribuzioni può servire `libfuse2`:
+
+```bash
+sudo apt install libfuse2
+```
+
+### Primo avvio della beta desktop
+
+1. Apri AnonyMCP.
+2. Leggi l'avviso iniziale: pseudonimizzazione non significa anonimizzazione.
+3. Aggiungi una cartella di prova, non una pratica reale.
+4. Usa nomi pratica opachi, per esempio `400F` o `P001`, non `Rossi contro Bianchi`.
+5. Scansiona la pratica.
+6. Controlla le entità rilevate nella review locale.
+7. Approva solo documenti di test.
+
+La dashboard mostra il percorso della configurazione usata dall'app. Se colleghi anche Claude
+Desktop, usa quello stesso percorso come `ANONYMCP_CONFIG`.
+
+## Problemi comuni beta desktop
+
+### macOS dice "impossibile verificare lo sviluppatore"
+
+È previsto per questa beta non firmata. Vai in **Impostazioni di Sistema -> Privacy e Sicurezza**
+e premi **Apri comunque**.
+
+### macOS dice che l'app è danneggiata
+
+Di solito è la quarantena di Gatekeeper. Esegui:
+
+```bash
+sudo xattr -dr com.apple.quarantine /Applications/AnonyMCP.app
+```
+
+### Ho scaricato il DMG sbagliato
+
+Se l'app non parte o macOS dice che l'architettura non è supportata, riscarica il file corretto:
+`arm64` per Mac Apple Silicon, `x64` per Mac Intel.
+
+### Windows mostra SmartScreen
+
+Premi **Ulteriori informazioni** e poi **Esegui comunque**. L'avviso appare perché la beta non è
+firmata con certificato Microsoft.
+
+### Windows o l'antivirus bloccano il file
+
+Controlla di averlo scaricato dalla pagina GitHub ufficiale. Se sì, puoi ripristinarlo dalla
+quarantena dell'antivirus per fare il test. Non farlo con file ricevuti via email o chat.
+
+### Linux non avvia l'AppImage
+
+Verifica che il file sia eseguibile con `chmod +x`. Se manca FUSE, installa `libfuse2`.
+
+### L'app e Claude Desktop vedono pratiche diverse
+
+Probabilmente stanno usando due file di configurazione diversi. Apri la dashboard AnonyMCP e copia
+il percorso indicato come configurazione. Usa quel percorso nella variabile `ANONYMCP_CONFIG` di
+Claude Desktop.
+
+## Installazione da sorgente (Fase 1)
+
+> Questa procedura è pensata per utenti tecnici (richiede Node.js e l'uso del terminale).
+> Gli avvocati non tecnici dovrebbero provare la beta desktop descritta sopra.
 
 **Prerequisito:** [Node.js](https://nodejs.org/) ≥ 20.
 
@@ -178,11 +306,10 @@ e [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 - **Fase 1 (questo repo)** — server MCP stdio standalone, cartelle configurate a mano,
   documenti testuali (`.txt`/`.md`). **Beta: non ancora deployabile in produzione legale**
   (vedi la checklist Go/No-Go e [`threat-model`](docs/agent-guides/threat-model.md)).
-- **Fase 2** (in corso) — già implementato **M-Write** (scrittura LLM→cartella con
-  re-idratazione, vedi sopra). Prossime tappe: app desktop **Electron** (evoluzione di
-  Anonimator) con UI di consenso/approvazione, log live, parser PDF/DOCX/OCR e NER locale
-  `italian-ner-xxl-v2` (ADR-0007), pensata per avvocati non tecnici e distribuita per macOS
-  (Intel/ARM), Windows e Linux.
+- **Fase 2** (in corso) — già implementati **M-Write** e una beta desktop **Electron**
+  (`v0.1.0-beta.1`) per configurazione pratiche, dashboard e review locale. La beta è pensata
+  per test guidati da avvocati non tecnici, ma non è ancora produzione legale. Prossime tappe:
+  hardening M6, parser PDF/DOCX/OCR e NER locale `italian-ner-xxl-v2` (ADR-0007).
   Dettaglio in [`docs/ROADMAP-fase2.md`](docs/ROADMAP-fase2.md).
 
 Le modifiche di ogni versione sono in [`CHANGELOG.md`](./CHANGELOG.md).
