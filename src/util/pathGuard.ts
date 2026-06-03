@@ -7,7 +7,28 @@
 import { resolve, relative, isAbsolute, sep, basename } from 'node:path'
 
 /** Estensioni mai esposte (artefatti AnonyMCP) anche se dentro una cartella esposta. */
-const NEVER_EXPOSE = new Set(['.anonymcp', '.sqlite', '.sqlite-journal'])
+const NEVER_EXPOSE_EXT = new Set([
+  '.anonymcp',
+  '.sqlite',
+  '.sqlite-journal',
+  '.sqlite-wal',
+  '.sqlite-shm',
+  '.db',
+  '.db-journal',
+  '.db-wal',
+  '.db-shm'
+])
+
+/** Nomi esatti degli store locali: non sono documenti né target scrivibili via MCP. */
+const INTERNAL_FILENAMES = new Set([
+  'pratica.anonymcp',
+  'pratica.entitydict.json',
+  'pratica.approvals.json',
+  'pratica.writes.json',
+  'pratica.sensitivity.json',
+  'pratica.searchindex.db',
+  'index.sqlite'
+])
 
 /**
  * True se `child` è contenuto (in modo sicuro) dentro `parent`.
@@ -24,14 +45,16 @@ export function isInside(parent: string, child: string): boolean {
 /** True se il file è un artefatto interno da non esporre mai. */
 export function isInternalArtifact(filePath: string): boolean {
   const name = basename(filePath)
+  if (INTERNAL_FILENAMES.has(name)) return true
   if (name.startsWith('.')) {
     // file nascosti: blocca i nostri artefatti, lascia passare il resto solo se
     // l'estensione non è nella blocklist
   }
   const dot = name.lastIndexOf('.')
   const ext = dot >= 0 ? name.slice(dot) : ''
-  if (NEVER_EXPOSE.has(ext)) return true
+  if (NEVER_EXPOSE_EXT.has(ext)) return true
   if (name.endsWith('.anonymcp')) return true
+  if (name.startsWith('pratica.searchindex.db-')) return true
   return false
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -12,6 +12,7 @@ import { SessionManager } from '../src/engine/sessionManager.js'
 import { PracticeRegistry } from '../src/practice/practiceRegistry.js'
 
 let dirs: string[] = []
+const itIfSymlink = process.platform === 'win32' ? it.skip : it
 function tmp(): string {
   const d = mkdtempSync(join(tmpdir(), 'anonymcp-write-'))
   dirs.push(d)
@@ -43,6 +44,28 @@ describe('writeService — validazione path/estensione', () => {
     const dir = tmp()
     expect(() => resolveWriteTarget(dir, '.anonymcp-staging/x.md')).toThrow()
     expect(() => resolveWriteTarget(dir, '.anonymcp')).toThrow()
+  })
+
+  it('blocca gli store interni AnonyMCP anche se hanno estensione testuale', () => {
+    const dir = tmp()
+    for (const relPath of [
+      'pratica.entitydict.json',
+      'pratica.approvals.json',
+      'pratica.writes.json',
+      'pratica.sensitivity.json',
+      'pratica.searchindex.db'
+    ]) {
+      expect(() => resolveWriteTarget(dir, relPath)).toThrow(/artefatto|non ammesso/i)
+    }
+  })
+
+  itIfSymlink('blocca la scrittura attraverso una directory symlink fuori pratica', () => {
+    const dir = tmp()
+    const outside = tmp()
+    symlinkSync(outside, join(dir, 'link-fuori'), 'dir')
+
+    expect(() => resolveWriteTarget(dir, 'link-fuori/bozza.md')).toThrow(/link simbolico/i)
+    expect(existsSync(join(outside, 'bozza.md'))).toBe(false)
   })
 
   it('riconosce le estensioni scrivibili', () => {

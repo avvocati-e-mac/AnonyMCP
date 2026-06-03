@@ -10,6 +10,7 @@
 import {
   readdirSync,
   statSync,
+  lstatSync,
   readFileSync,
   writeFileSync,
   existsSync,
@@ -149,6 +150,7 @@ export class PracticeRegistry {
       .map((n) => join(folderPath, n))
       .filter((p) => {
         try {
+          if (lstatSync(p).isSymbolicLink()) return false
           return statSync(p).isFile() && isSupported(p) && !isInternalArtifact(p)
         } catch {
           return false

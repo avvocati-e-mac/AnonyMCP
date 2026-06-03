@@ -17,6 +17,12 @@ describe('pathGuard', () => {
   it('isInternalArtifact blocca i file .anonymcp e sqlite', () => {
     expect(isInternalArtifact('/x/pratica.anonymcp')).toBe(true)
     expect(isInternalArtifact('/x/index.sqlite')).toBe(true)
+    expect(isInternalArtifact('/x/pratica.entitydict.json')).toBe(true)
+    expect(isInternalArtifact('/x/pratica.approvals.json')).toBe(true)
+    expect(isInternalArtifact('/x/pratica.writes.json')).toBe(true)
+    expect(isInternalArtifact('/x/pratica.sensitivity.json')).toBe(true)
+    expect(isInternalArtifact('/x/pratica.searchindex.db')).toBe(true)
+    expect(isInternalArtifact('/x/pratica.searchindex.db-wal')).toBe(true)
     expect(isInternalArtifact('/x/atto.pdf')).toBe(false)
   })
 

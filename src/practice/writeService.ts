@@ -9,7 +9,8 @@
 // ri-idratiamo il contenuto e decidiamo dove scrivere (staging o destinazione).
 // ============================================================
 
-import { resolve, join, extname, basename, isAbsolute } from 'node:path'
+import { existsSync, lstatSync, realpathSync } from 'node:fs'
+import { resolve, join, extname, basename, isAbsolute, relative } from 'node:path'
 import { isInside, isInternalArtifact } from '../util/pathGuard.js'
 import type { SessionManager, RehydrationResult } from '../engine/sessionManager.js'
 
@@ -61,7 +62,26 @@ export function resolveWriteTarget(folderPath: string, relPath: string): string 
   if (isInternalArtifact(absTarget)) {
     throw new Error(`Nome non ammesso (artefatto interno): ${basename(absTarget)}.`)
   }
+  assertNoSymlinkEscape(folderPath, absTarget)
   return absTarget
+}
+
+function assertNoSymlinkEscape(folderPath: string, absTarget: string): void {
+  const root = resolve(folderPath)
+  const rootReal = realpathSync(root)
+  let current = root
+  const parts = relative(root, absTarget).split(/[\\/]+/).filter(Boolean)
+
+  for (const part of parts) {
+    current = join(current, part)
+    if (!existsSync(current)) return
+    if (lstatSync(current).isSymbolicLink()) {
+      throw new Error('Percorso non ammesso: contiene un link simbolico.')
+    }
+    if (!isInside(rootReal, realpathSync(current))) {
+      throw new Error('Percorso fuori dalla cartella della pratica tramite link simbolico.')
+    }
+  }
 }
 
 /** True se l'estensione è nella allowlist testuale. */
