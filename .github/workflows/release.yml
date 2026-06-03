@@ -1,23 +1,52 @@
 name: Release
 
-# Pubblica una GitHub Release quando viene creato un tag v* (es. v0.1.0).
-#
-# ── PLACEHOLDER FASE 1 ──────────────────────────────────────────────
-# AnonyMCP Fase 1 è un server MCP stdio (Node), non un'app Electron:
-# qui produciamo un tarball npm pack (codice + dist/), non installer GUI.
-# Quando arriverà l'app Electron (Fase 2), estendere a una matrice
-# macOS-intel/arm + Windows + Linux che produce .dmg/.exe/.AppImage,
-# sul modello di avvocati-e-mac/anonimator (.github/workflows/release.yml).
-# ────────────────────────────────────────────────────────────────────
-
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versione da pubblicare senza prefisso v'
+        required: true
+        default: '0.1.0-beta.1'
 
 jobs:
-  build:
-    name: Build + test + pacchetto
+  prepare:
+    name: Prepara versione
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verifica versione e changelog
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version || '' }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${INPUT_VERSION#v}"
+          fi
+          TAG="v${VERSION}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Versione tag/input ($VERSION) diversa da package.json ($PACKAGE_VERSION)." >&2
+            exit 1
+          fi
+          if ! awk "/^## \\[$VERSION\\]/{found=1} END{exit found ? 0 : 1}" CHANGELOG.md; then
+            echo "CHANGELOG.md non contiene una sezione ## [$VERSION]." >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  quality:
+    name: Typecheck, test e build
+    needs: [prepare]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -30,67 +59,269 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck + test
-        run: |
-          npm run typecheck
-          npm test
-
-      - name: Build
+      - name: Build server MCP
         run: npm run build
 
-      - name: Pacchettizza (npm pack)
-        run: npm pack --pack-destination artifacts
+      - name: Typecheck server MCP
+        run: npm run typecheck
+
+      - name: Typecheck Electron app
+        run: npm run app:typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build Electron app
+        run: npm run app:build
+
+  package-server:
+    name: Pacchetto server MCP
+    needs: [quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server MCP
+        run: npm run build
+
+      - name: Pacchettizza npm tarball
+        run: |
+          mkdir -p artifacts
+          npm pack --pack-destination artifacts
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: npm-tarball
+          name: server-tarball
           path: artifacts/*.tgz
           if-no-files-found: error
           retention-days: 1
 
+  build-windows:
+    name: Windows x64 installer
+    needs: [quality]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server MCP
+        run: npm run build
+
+      - name: Build Electron app
+        run: npm run app:build
+
+      - name: Package Windows installer
+        run: npx electron-builder --win --x64 --config electron-builder.config.cjs --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-installer
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  build-mac-arm64:
+    name: macOS Apple Silicon DMG
+    needs: [quality]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server MCP
+        run: npm run build
+
+      - name: Build Electron app
+        run: npm run app:build
+
+      - name: Package macOS arm64 DMG
+        run: npx electron-builder --mac --arm64 --config electron-builder.config.cjs --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: mac-arm64-dmg
+          path: release/*.dmg
+          if-no-files-found: error
+          retention-days: 1
+
+  build-mac-x64:
+    name: macOS Intel DMG
+    needs: [quality]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server MCP
+        run: npm run build
+
+      - name: Build Electron app
+        run: npm run app:build
+
+      - name: Package macOS x64 DMG
+        run: npx electron-builder --mac --x64 --config electron-builder.config.cjs --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: mac-x64-dmg
+          path: release/*.dmg
+          if-no-files-found: error
+          retention-days: 1
+
+  build-linux:
+    name: Linux x64 AppImage
+    needs: [quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server MCP
+        run: npm run build
+
+      - name: Build Electron app
+        run: npm run app:build
+
+      - name: Package Linux AppImage
+        run: npx electron-builder --linux --x64 --config electron-builder.config.cjs --publish never
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: linux-appimage
+          path: release/*.AppImage
+          if-no-files-found: error
+          retention-days: 1
+
   release:
-    name: GitHub Release
-    needs: [build]
+    name: GitHub prerelease beta
+    needs: [prepare, package-server, build-windows, build-mac-arm64, build-mac-x64, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v5
         with:
-          name: npm-tarball
           path: artifacts/
 
-      - name: Estrai le note dal CHANGELOG
-        id: changelog
+      - name: Generate checksums
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          cd artifacts
+          find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
 
-      - name: Crea la GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "AnonyMCP ${{ github.ref_name }}"
-          body: |
-            ## Installazione (Fase 1 — server MCP)
+      - name: Build release notes
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          NOTES="$(awk "/^## \\[$VERSION\\]/{found=1; next} found && /^## \\[/{exit} found{print}" CHANGELOG.md)"
+          cat > release-notes.md <<EOF
+          ## Beta di test - non usare in produzione legale
 
-            AnonyMCP è un **server MCP stdio** per Node ≥ 20, non un'app cliccabile.
-            Si installa dal sorgente e si collega a un client MCP (es. Claude Desktop).
-            Istruzioni passo-passo nel [README](https://github.com/avvocati-e-mac/AnonyMCP#installazione-passo-passo-fase-1).
+          Questa release serve a provare l'app desktop AnonyMCP. Non e' ancora una versione definitiva e non va usata con pratiche reali o documenti sensibili senza ulteriori verifiche.
 
-            Il file `.tgz` allegato è il pacchetto npm, per chi preferisce
-            `npm install <file>.tgz` invece del clone del repository.
+          Scarica il file giusto per il tuo computer:
+          - Mac Apple Silicon (M1/M2/M3/M4): \`AnonyMCP-${VERSION}-arm64.dmg\`
+          - Mac Intel: \`AnonyMCP-${VERSION}-x64.dmg\`
+          - Windows 10/11 a 64 bit: \`AnonyMCP-${VERSION}-windows-x64-setup.exe\`
+          - Linux a 64 bit: \`AnonyMCP-${VERSION}-linux-x64.AppImage\`
+          - Server MCP per utenti tecnici: \`anonymcp-server-${VERSION}.tgz\`
 
-            ---
+          ## macOS - app non firmata e non notarizzata
 
-            ${{ steps.changelog.outputs.notes }}
-          files: |
-            artifacts/*.tgz
-          draft: false
-          prerelease: true
+          1. Apri il file \`.dmg\`.
+          2. Trascina \`AnonyMCP.app\` nella cartella Applicazioni.
+          3. Se macOS blocca l'app, apri Impostazioni di Sistema -> Privacy e Sicurezza e premi "Apri comunque".
+          4. Se ancora non si apre, usa Terminale una sola volta:
+
+          \`\`\`bash
+          sudo xattr -dr com.apple.quarantine /Applications/AnonyMCP.app
+          \`\`\`
+
+          ## Windows - app non firmata
+
+          SmartScreen puo' mostrare "Windows ha protetto il PC". Per provare la beta:
+          1. Premi "Ulteriori informazioni".
+          2. Premi "Esegui comunque".
+          3. Se l'antivirus mette il file in quarantena, ripristinalo solo se lo hai scaricato da questa pagina GitHub ufficiale.
+
+          ## Linux
+
+          Rendi eseguibile l'AppImage e avviala:
+
+          \`\`\`bash
+          chmod +x AnonyMCP-${VERSION}-linux-x64.AppImage
+          ./AnonyMCP-${VERSION}-linux-x64.AppImage
+          \`\`\`
+
+          Su alcune distribuzioni serve \`libfuse2\`.
+
+          ## Checksums
+
+          Il file \`SHA256SUMS.txt\` consente di verificare che il download non sia corrotto.
+
+          ---
+
+          $NOTES
+          EOF
+
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mapfile -t FILES < <(find artifacts -type f -print | sort)
+          gh release create "$TAG" "${FILES[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "AnonyMCP v$VERSION (beta)" \
+            --notes-file release-notes.md \
+            --prerelease

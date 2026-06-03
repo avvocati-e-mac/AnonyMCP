@@ -10,6 +10,7 @@ import {
 import { existsSync, readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { loadConfig, saveConfig } from '../../config.js'
 import { LocalReviewService } from '../../app/reviewService.js'
 import { buildExposedFolders, discoverPracticeFolders, type FolderImportMode } from '../../app/folderImport.js'
@@ -85,9 +86,17 @@ function installSecurityHeaders(): void {
 function isTrustedRendererUrl(url: string): boolean {
   if (isDev) {
     const devUrl = process.env.ELECTRON_RENDERER_URL
-    return !!devUrl && url.startsWith(devUrl)
+    if (!devUrl) return false
+    try {
+      const expected = new URL(devUrl)
+      const actual = new URL(url)
+      return actual.origin === expected.origin
+    } catch {
+      return false
+    }
   }
-  return url.startsWith('file://')
+  const rendererUrl = pathToFileURL(join(__dirname, '../renderer/index.html')).href
+  return url === rendererUrl || url.startsWith(`${rendererUrl}#`)
 }
 
 function assertTrustedSender(event: IpcMainInvokeEvent): void {
@@ -99,7 +108,7 @@ function assertTrustedSender(event: IpcMainInvokeEvent): void {
 }
 
 function configPath(): string {
-  return process.env.ANONYMCP_CONFIG ?? 'anonymcp.config.json'
+  return process.env.ANONYMCP_CONFIG ?? join(app.getPath('userData'), 'anonymcp.config.json')
 }
 
 function absoluteConfigPath(): string {
@@ -334,7 +343,7 @@ function createWindow(): BrowserWindow {
     log.error('Caricamento renderer fallito', { errorCode, errorDescription, validatedURL })
   })
   win.webContents.on('console-message', (_event, ...args: unknown[]) => {
-    log.warn('Console renderer', { args })
+    log.warn('Console renderer', { argCount: args.length })
   })
   win.webContents.on('render-process-gone', (_event, details) => {
     log.error('Renderer process terminato', details)
