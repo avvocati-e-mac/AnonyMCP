@@ -113,10 +113,14 @@ function isDictionaryShape(
 function isValidEntry(v: unknown): v is EntityDictionaryEntry {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>
+  if (typeof o.original !== 'string' || typeof o.pseudonym !== 'string') return false
+  const original = o.original.trim().toLowerCase()
+  const pseudonym = o.pseudonym.trim().toLowerCase()
   return (
-    typeof o.original === 'string' &&
-    o.original.length > 0 &&
-    typeof o.pseudonym === 'string' &&
+    original.length > 0 &&
+    pseudonym.length > 0 &&
+    pseudonym !== original &&
+    !pseudonym.includes(original) &&
     typeof o.type === 'string'
   )
 }

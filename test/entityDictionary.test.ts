@@ -92,6 +92,24 @@ describe('saveDictionary / loadDictionary', () => {
     expect(loaded!.entries[0]!.original).toBe('Mario Rossi')
   })
 
+  it('scarta entry avvelenate con pseudonimo uguale al testo reale', () => {
+    const poisoned = {
+      version: 1,
+      practiceId: '400f',
+      exportedAt: new Date().toISOString(),
+      entries: [
+        { original: 'Mario Rossi', pseudonym: 'Mario Rossi', type: 'PERSONA' },
+        { original: 'RSSMRA80A01H501U', pseudonym: 'CF_001', type: 'CODICE_FISCALE' }
+      ]
+    }
+    writeFileSync(dictionaryPath(dir), JSON.stringify(poisoned), 'utf8')
+
+    const loaded = loadDictionary(dir)
+
+    expect(loaded!.entries).toHaveLength(1)
+    expect(loaded!.entries[0]!.pseudonym).toBe('CF_001')
+  })
+
   it('ritorna null su JSON corrotto', () => {
     writeFileSync(dictionaryPath(dir), '{ non valido', 'utf8')
     expect(loadDictionary(dir)).toBeNull()
