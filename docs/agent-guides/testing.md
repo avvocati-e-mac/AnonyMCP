@@ -23,6 +23,9 @@ npx vitest run test/<file>.test.ts   # un singolo file
 - **E2E MCP** (`test/server.e2e.test.ts`): client ↔ server via `InMemoryTransport`; verifica
   i tool esposti (6: i 4 di lettura + `write_document`/`create_folder`), l'assenza dei tool
   de-anon, e che `resources/read` ritorni solo pseudonimi.
+- **Test manuali assistiti** (`docs/test-plans/`): piani operativi non-CI. In particolare
+  `docs/test-plans/mcp-electron/` guida l'uso di `mcp-electron` sull'app Electron locale con
+  sole pratiche sintetiche, per verificare chiarezza UI e red-team del confine locale/MCP-cloud.
 - **Anti-leak** (`test/fixtures.antileak.test.ts`): vedi sotto.
 - **Red-team** (`test/redteam.*.test.ts`): docId, sanitizer (fuzzing), search guard, e M-Write
   (`redteam.write.test.ts`: traversal bloccato, return senza PII, staging, re-idratazione).

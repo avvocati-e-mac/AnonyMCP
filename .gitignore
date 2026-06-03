@@ -4,6 +4,7 @@ out/
 release/
 coverage/
 *.log
+logs/
 
 # AnonyMCP runtime artifacts — NEVER commit (may contain sensitive material)
 *.anonymcp
