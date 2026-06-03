@@ -123,6 +123,20 @@ describe('PracticeRegistry — M-Write end-to-end (filesystem)', () => {
     expect(reg.listPendingWrites('400f')).toHaveLength(0)
   })
 
+  it('pending write resta visibile a una nuova istanza dopo riavvio logico', () => {
+    const dir = tmp()
+    const reg1 = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    reg1.stageWrite('400f', 'Ricerche/bozza.md', 'Contenuto.')
+
+    const reg2 = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    expect(reg2.listPendingWrites('400f')).toHaveLength(1)
+    const preview = reg2.pendingWritePreview('400f', 'Ricerche/bozza.md')
+    expect(preview?.content).toBe('Contenuto.')
+    expect(preview?.hashMatches).toBe(true)
+    expect(reg2.promoteWrite('400f', 'Ricerche/bozza.md')).toBe(true)
+    expect(existsSync(join(dir, 'Ricerche/bozza.md'))).toBe(true)
+  })
+
   it('rifiuta una seconda scrittura sullo stesso relPath se esiste un pending', () => {
     const dir = tmp()
     const reg = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)

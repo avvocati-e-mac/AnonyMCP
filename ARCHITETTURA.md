@@ -11,6 +11,7 @@ dettaglio, le guide in [docs/agent-guides/](docs/agent-guides/).
 - 4. Pipeline di un documento (passo-passo + flowchart)
 - 5. Flusso MCP: scan → quarantena → approvazione → read (sequence)
 - 6. Stati di un documento (state machine)
+- 6-bis. Persistenza: perché esiste e cosa verifica
 - 7. Sicurezza e privacy
 - 8. Token-minimization (Fase 2)
 - 9. Processo di sviluppo (come è stato costruito)
@@ -156,6 +157,56 @@ stateDiagram-v2
 
 La revisione umana avviene tramite la TUI di Fase 1 (`npm run review -- --practice <id>`):
 lista entità colorata + anteprima Originale/Anonimizzato. Vedi `src/tui/`. Fase 2 = app Electron.
+
+## 6-bis. Persistenza: perché esiste e cosa verifica
+La persistenza serve a non ricominciare da zero ogni volta che il server MCP viene spento e
+riacceso. In una pratica legale gli stessi soggetti compaiono in più documenti e in più giorni:
+se oggi "Mario Rossi" diventa "M. R.", domani deve restare "M. R.". Altrimenti il LLM leggerebbe
+una pratica incoerente, come se ogni riavvio cambiasse le etichette sulle cartelle.
+
+Metafora semplice: AnonyMCP ha una memoria locale di studio, non una memoria da mandare al
+consulente esterno. La memoria locale ricorda che cosa è stato già controllato e quali
+pseudonimi usare; il consulente esterno, cioè il LLM cloud, riceve solo i fogli già coperti.
+
+La persistenza è stata fatta per tre motivi pratici:
+- **Coerenza degli pseudonimi**: la stessa entità deve avere lo stesso pseudonimo tra documenti e
+  tra sessioni, altrimenti la pratica diventa difficile da leggere.
+- **Quarantena affidabile**: se l'avvocato approva un documento, il server riavviato deve ricordare
+  quell'approvazione; se il documento cambia, l'approvazione deve decadere automaticamente.
+- **Lavoro umano non perso**: correzioni manuali, decisioni sulla sensibilità e bozze LLM in
+  attesa devono restare disponibili alla UI locale anche dopo un riavvio.
+
+Cosa viene persistito, in pratica:
+- `pratica.anonymcp`: cache cifrata con soli hash e pseudonimi. Serve per coerenza, non contiene il
+  testo reale.
+- `pratica.entitydict.json`: dizionario locale della pratica con originali e pseudonimi. È come una
+  rubrica di studio: resta accanto ai documenti originali e non viene mai esposto via MCP.
+- `pratica.approvals.json`: registro delle approvazioni umane, legato all'hash del contenuto. Se il
+  file cambia, cambia l'hash e il documento torna in review.
+- `pratica.sensitivity.json`: decisioni locali dell'avvocato sulla sensibilità del documento.
+- `pratica.writes.json` + `.anonymcp-staging/`: bozze prodotte dall'LLM, re-idratate localmente e in
+  attesa di conferma umana.
+
+Attività svolte per verificare e rafforzare questa persistenza:
+- Aggiunti test su cache cifrata, cache corrotta e cambio `engineVersion`, per verificare che una
+  memoria vecchia o illeggibile venga ignorata senza crash e senza leak.
+- Aggiunti test su approvazioni persistite, approvazioni corrotte e documenti cancellati, per
+  garantire il comportamento fail-closed: senza approvazione valida, niente Resource e niente search.
+- Aggiunto un test MCP con nuova istanza server, per simulare il riavvio logico e verificare che
+  pseudonimi e approvazioni siano ancora coerenti.
+- Aggiunti test su pending write, per verificare che una bozza in staging resti visibile alla UI
+  locale dopo una nuova istanza.
+- Aggiunti test red-team su symlink e artefatti interni, per impedire che il server legga o scriva
+  fuori dalla pratica o sovrascriva file come dizionario, approvazioni, indice e staging.
+- Aggiunti test su query di ricerca identificanti (nome persona, R.G., targa), per evitare che il
+  tool `search` venga usato per confermare la presenza di dati reali.
+- Aggiunto un controllo sul dizionario locale: una voce avvelenata che usa il testo reale come
+  pseudonimo viene scartata.
+
+Il criterio guida resta semplice: la persistenza è utile solo se riduce errori e lavoro ripetuto
+senza aumentare ciò che esce verso il LLM. Se un dato serve solo localmente, resta locale; se un
+dato attraversa MCP, deve essere pseudonimizzato, approvato e non bloccato dalla policy sui dati
+sensibili.
 
 ## 7. Sicurezza e privacy
 Sintesi; dettaglio in [security-invariants](docs/agent-guides/security-invariants.md) e

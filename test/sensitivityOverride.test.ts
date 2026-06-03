@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { PracticeRegistry } from '../src/practice/practiceRegistry.js'
 import { LocalReviewService } from '../src/app/reviewService.js'
 import type { AnonyMcpConfig } from '../src/types.js'
+import { sensitivityPath } from '../src/practice/sensitivityStore.js'
 
 let dirs: string[] = []
 
@@ -66,6 +67,22 @@ describe('override sensibilita documenti', () => {
     expect(doc!.status).toBe('approved')
     expect(reg2.exposableDocs()).toHaveLength(1)
     reg2.closeIndexes()
+  })
+
+  it('decisioni sensibilita corrotte: fail-closed su documento suggerito sensibile', async () => {
+    const dir = tmp(SENSITIVE_DOC, 'penale.md')
+    writeFileSync(sensitivityPath(dir), '{ json non valido', 'utf8')
+
+    const reg = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    await reg.scan('400f')
+    const docId = reg.getPractice('400f')!.docs.keys().next().value as string
+    reg.approve('400f', docId)
+
+    expect(reg.reviewList('400f')[0]!.sensitiveSuggested).toBe(true)
+    expect(reg.reviewList('400f')[0]!.sensitive).toBe(true)
+    expect(reg.exposableDocs()).toHaveLength(0)
+    expect(reg.search('400f', 'reato')).toHaveLength(0)
+    reg.closeIndexes()
   })
 
   it("l'avvocato puo' marcare sensibile un documento non suggerito e rimuoverlo dall'indice", async () => {

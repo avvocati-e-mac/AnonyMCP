@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -10,6 +10,7 @@ import {
   cachePath
 } from '../src/practice/practiceStore.js'
 import type { DetectedEntity } from '../src/types.js'
+import { encrypt } from '../src/util/crypto.js'
 
 const PASS = 'test-passphrase'
 const entities: DetectedEntity[] = [
@@ -64,6 +65,13 @@ describe('practiceStore', () => {
     const dir = tmp()
     saveCache(dir, buildCache('p1', 'old-hash', entities, true), PASS)
     expect(loadCache(dir, PASS, 'new-hash')).toBeNull()
+  })
+
+  it('invalida la cache se engineVersion cambia', () => {
+    const dir = tmp()
+    const cache = { ...buildCache('p1', 'h', entities, true), engineVersion: 'old-engine@0.0.1' }
+    writeFileSync(cachePath(dir), encrypt(JSON.stringify(cache), PASS))
+    expect(loadCache(dir, PASS, 'h')).toBeNull()
   })
 
   it('ritorna null con passphrase errata', () => {

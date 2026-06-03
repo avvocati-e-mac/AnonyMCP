@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PracticeRegistry } from '../src/practice/practiceRegistry.js'
+import { CACHE_FILENAME } from '../src/practice/practiceStore.js'
 
 const PASS = 'test-cache-pass'
 let dirs: string[] = []
@@ -49,5 +50,18 @@ describe('coerenza pseudonimi tra sessioni (cache cifrata)', () => {
     await r.scan('p1')
     // exposableDocs funziona comunque; la cache non è richiesta.
     expect(r.exposableDocs().length).toBe(1)
+  })
+
+  it('cache corrotta: lo scan riparte pulito senza esporre PII', async () => {
+    const dir = tmp(DOC)
+    writeFileSync(join(dir, CACHE_FILENAME), 'blob non cifrato', 'utf8')
+
+    const r = new PracticeRegistry([{ id: 'p1', label: 'P1', path: dir }], false, PASS)
+    registries.push(r)
+    await r.scan('p1')
+    const text = r.exposableDocs()[0]!.doc.result!.text
+
+    expect(text).not.toContain('Mario Rossi')
+    expect(text).not.toContain('RSSMRA80A01H501U')
   })
 })

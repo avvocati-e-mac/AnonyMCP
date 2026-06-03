@@ -185,6 +185,15 @@ export class PracticeRegistry {
 
     const files = this.listFiles(practice.folder.path).filter(isTextDocument)
     const skipped = this.listFiles(practice.folder.path).length - files.length
+    const currentFiles = new Set(files)
+
+    // Ritiro sicuro: un documento non piu' presente/supportato non deve restare
+    // esponibile dalla RAM o dall'indice dopo un rescan.
+    for (const [docId, doc] of practice.docs) {
+      if (currentFiles.has(doc.filePath)) continue
+      practice.docs.delete(docId)
+      practice.index?.removeDocument(docId)
+    }
 
     // sourceHash deterministico sull'insieme dei contenuti testuali della pratica.
     const sourceHash = `sha256:${sha256(

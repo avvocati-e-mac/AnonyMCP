@@ -80,6 +80,38 @@ describe('persistenza dello stato di approvazione (TUI ↔ server)', () => {
     server.closeIndexes()
   })
 
+  it('stato approvazione corrotto: fail-closed, nessun documento esposto', async () => {
+    const dir = tmp(DOC)
+    writeFileSync(approvalPath(dir), '{ json non valido', 'utf8')
+
+    const server = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    await server.scan('400f')
+
+    expect(server.status('400f').approved).toBe(0)
+    expect(server.status('400f').reviewRequired).toBe(1)
+    expect(server.exposableDocs()).toHaveLength(0)
+    expect(server.search('400f', 'risoluzione')).toHaveLength(0)
+    server.closeIndexes()
+  })
+
+  it('rescan ritira da RAM e indice un documento approvato poi cancellato', async () => {
+    const dir = tmp(DOC)
+    const server = new PracticeRegistry([{ id: '400f', label: '400F', path: dir }], true)
+    await server.scan('400f')
+    const docId = server.getPractice('400f')!.docs.keys().next().value as string
+    server.approve('400f', docId)
+    expect(server.exposableDocs()).toHaveLength(1)
+    expect(server.search('400f', 'risoluzione')).toHaveLength(1)
+
+    unlinkSync(join(dir, 'atto.md'))
+    await server.scan('400f')
+
+    expect(server.getPractice('400f')!.docs.has(docId)).toBe(false)
+    expect(server.exposableDocs()).toHaveLength(0)
+    expect(server.search('400f', 'risoluzione')).toHaveLength(0)
+    server.closeIndexes()
+  })
+
   it("l'approvazione decade se il file sorgente cambia (sourceHash diverso)", async () => {
     const dir = tmp(DOC)
 

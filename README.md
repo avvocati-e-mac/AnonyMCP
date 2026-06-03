@@ -264,7 +264,7 @@ Aggiungi AnonyMCP al file di configurazione di Claude Desktop:
 
 - `ANONYMCP_CONFIG` — percorso della config (in alternativa al flag `--config`).
 - `ANONYMCP_CACHE_KEY` — passphrase della cache cifrata. Se **assente**, il server è
-  "forward-only": la coerenza dei pseudonimi vale solo nella sessione corrente.
+  "forward-only": la coerenza degli pseudonimi vale solo nella sessione corrente.
 
 Riavvia Claude Desktop: dovresti vedere lo strumento `list_folders` rispondere con le tue
 pratiche.
