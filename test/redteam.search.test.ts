@@ -61,6 +61,32 @@ describe('search guard anti-PII', () => {
     expect(res.isError).toBe(true)
   })
 
+  it('rifiuta una query che è un numero di ruolo generale', async () => {
+    const res = await client.callTool({
+      name: 'anonymcp_search',
+      arguments: { query: 'R.G. 1234/2026' }
+    })
+    expect(res.isError).toBe(true)
+  })
+
+  it('rifiuta una query che è una targa', async () => {
+    const res = await client.callTool({
+      name: 'anonymcp_search',
+      arguments: { query: 'AB 123 CD' }
+    })
+    expect(res.isError).toBe(true)
+  })
+
+  it('rifiuta una query che sembra un nome persona senza riecheggiarlo', async () => {
+    const res = await client.callTool({
+      name: 'anonymcp_search',
+      arguments: { query: 'Mario Rossi' }
+    })
+    const text = (res.content as { type: string; text: string }[])[0]!.text
+    expect(res.isError).toBe(true)
+    expect(text).not.toContain('Mario Rossi')
+  })
+
   it('accetta una query placeholder', async () => {
     const res = await client.callTool({ name: 'anonymcp_search', arguments: { query: 'CF_001' } })
     expect(res.isError).toBeFalsy()

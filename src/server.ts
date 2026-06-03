@@ -13,7 +13,7 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod'
 import type { AnonyMcpConfig } from './types.js'
 import { PracticeRegistry } from './practice/practiceRegistry.js'
-import { REGEX_PATTERNS } from './engine/regexPatterns.js'
+import { REGEX_PATTERNS, STRUCTURED_LEGAL_PATTERNS } from './engine/regexPatterns.js'
 import { log } from './util/logger.js'
 
 const RESOURCE_SCHEME = 'anonymcp'
@@ -25,9 +25,18 @@ const RESOURCE_SCHEME = 'anonymcp'
  * rifiutiamo esplicitamente query che sono esse stesse dati personali.
  */
 function queryLooksLikePII(query: string): boolean {
-  return REGEX_PATTERNS.some(({ pattern }) =>
+  const trimmed = query.trim()
+  if (looksLikePersonNameQuery(trimmed)) return true
+  return [...REGEX_PATTERNS, ...STRUCTURED_LEGAL_PATTERNS].some(({ pattern }) =>
     new RegExp(pattern.source, pattern.flags).test(query)
   )
+}
+
+function looksLikePersonNameQuery(query: string): boolean {
+  if (/^(?:[A-ZÀ-Ü]\.){1,4}$/u.test(query.replace(/\s+/g, ''))) return false
+  const tokens = query.split(/\s+/).filter(Boolean)
+  if (tokens.length < 2 || tokens.length > 4) return false
+  return tokens.every((token) => /^[A-ZÀ-Ü][A-Za-zÀ-ÿ'’.\-]{2,}$/u.test(token))
 }
 
 /** Costruisce un URI resource opaco per un documento approvato. */
