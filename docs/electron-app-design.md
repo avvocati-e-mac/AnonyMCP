@@ -208,6 +208,19 @@ Condizioni aggiuntive:
 - nessuna parola lunga chiaramente descrittiva;
 - normalizzazione Unicode NFKC e collision check case-insensitive.
 
+Stato implementativo dopo red-team 2026-06-03:
+
+- l'import Electron gia' evita i casi chiaramente identificanti (`Mario Rossi`, `Rossi c Bianchi`)
+  e assegna `label = id`, quindi riduce il leak piu' probabile verso `list_folders`;
+- resta un gap rispetto alla regola forte: nomi con singola parte identificante e numero
+  (`Rossi-2026`, `eredi_rossi_1`, `cliente-1`) possono sembrare opachi all'euristica ma non lo
+  sono abbastanza per il canale MCP;
+- prima della produzione, `safeOpaqueName` deve diventare allowlist stretta, non denylist:
+  pattern `^[A-Z0-9][A-Z0-9._-]{1,15}$`, NFKC, almeno una cifra, collisione case-insensitive,
+  rifiuto di parole descrittive lunghe e fallback a codice numerico automatico;
+- la config manuale resta coperta da ADR-0004: warning su stderr. Se si vuole bloccare l'avvio
+  o sostituire server-side label identificanti, serve nuova decisione ADR o superseding ADR.
+
 Esempi ammessi:
 
 - `400F`;
@@ -688,6 +701,10 @@ Requisiti bloccanti:
 - nessun remote content nella UI;
 - nessun `webview`;
 - blocco di navigazione esterna e nuove finestre;
+- in produzione il main process deve fidarsi solo dell'esatto `renderer/index.html` pacchettizzato,
+  non di qualunque URL `file://`;
+- in sviluppo il trust del renderer deve confrontare l'`origin` normalizzato del dev server, non
+  usare un semplice `startsWith` sulla stringa URL;
 - preload con funzioni nominali, mai `ipcRenderer` raw;
 - API preload chiusa e congelata con `Object.freeze`;
 - Zod su input e output IPC;
@@ -695,7 +712,8 @@ Requisiti bloccanti:
 - preview documenti come testo; niente `dangerouslySetInnerHTML` salvo wrapper auditato;
 - niente telemetria o crash upload;
 - DevTools disabilitati in produzione;
-- niente PII in log, clipboard o errori;
+- niente PII in log, clipboard o errori; in produzione non inoltrare gli argomenti completi dei
+  `console-message` renderer su stderr, oppure redigerli/troncarli;
 - stdout riservato al protocollo JSON-RPC del server MCP.
 
 Payload IPC:
@@ -722,6 +740,15 @@ Payload IPC:
 - collisioni Unicode/case-insensitive gestite;
 - gruppi cliente solo UI locale, mai label MCP.
 
+### Filesystem e stato documenti
+
+- `scan()` deve essere symlink-aware: un file symlink che punta fuori dalla pratica non deve
+  essere processato ne' indicizzato;
+- un documento approvato cancellato dal disco deve essere ritirato dalla RAM, dalle Resource e
+  dall'indice BM25 al successivo scan;
+- ogni ritiro deve inviare `resources/listChanged`, cosi' il client MCP non conserva una lista
+  apparentemente valida.
+
 ### Sensibilita'
 
 - AnonyMCP suggerisce, l'avvocato decide;
@@ -735,6 +762,17 @@ Payload IPC:
 - evidenziare pseudonimi ambigui;
 - verificare hash della bozza prima della promozione;
 - niente file temporanei con nomi reali fuori dalla pratica.
+- M-Write deve rifiutare ogni scrittura verso artefatti interni AnonyMCP (`pratica.*.json`,
+  `pratica.searchindex.db`, `.anonymcp`, `.anonymcp-staging`, WAL/journal), anche con
+  `overwrite=true`.
+
+### Electron/IPC runtime
+
+- `assertTrustedSender` deve accettare solo il renderer previsto, non ogni `file://` locale;
+- i canali IPC che restituiscono PII locale (`review:detail`, `write:detail`) sono ammessi solo
+  per la UI locale fidata; una navigazione a pagina locale diversa deve renderli inaccessibili;
+- gli errori e i log renderer-forwarded non devono contenere testo originale, nomi reali, CF,
+  IBAN o bozza re-idratata.
 
 ## 14. Test bloccanti prima dell'implementazione completa
 
@@ -748,6 +786,8 @@ Import e label:
 
 - corpus positivo/negativo per label opache;
 - collisioni `400F`/`400f`, duplicati, Unicode composto/decomposto;
+- casi negativi obbligatori: `Rossi-2026`, `eredi_rossi`, `cliente-1`, `comune-di-torino`,
+  `Mario_Rossi_1`;
 - directory create/copy/touch: ID stabili;
 - nuove cartelle sotto root monitorata non entrano in `list_folders` senza conferma;
 - albero `Clienti/Mario Rossi/Sinistro Auto`: MCP espone solo codice opaco.
@@ -756,6 +796,7 @@ Path:
 
 - root symlink verso altra cartella rifiutata salvo override locale;
 - file symlink che esce dalla root non scansionato;
+- directory symlink dentro la pratica non utilizzabile come target M-Write;
 - placeholder cloud/temp esclusi o segnalati.
 
 Review:
@@ -763,6 +804,7 @@ Review:
 - aggiunta entita' manuale;
 - falso positivo escluso;
 - documento approvato indicizzato solo se esponibile;
+- documento approvato cancellato dal disco ritirato da Resource/read/search dopo rescan;
 - testo originale mai nei tool MCP.
 
 Sensibilita':
@@ -780,6 +822,9 @@ IPC/Electron:
 - `window.anonymcp` non espone `send`, `invoke`, `on` grezzi;
 - fuzz canali sconosciuti e payload malformati;
 - payload con PII inattesa rifiutato;
+- sender URL: `file:///tmp/malicious.html` e altri `file://` non-packaged non possono invocare IPC;
+- dev URL: host/origin diverso dal dev server configurato viene rifiutato anche se ha prefisso
+  simile;
 - CSP blocca script/link malevoli in preview;
 - clipboard non contiene PII salvo azione locale esplicita e protetta;
 - log UI/stderr non contengono fixture PII o stack trace;
@@ -790,6 +835,8 @@ Pending write:
 - staging valido promosso;
 - staging modificato rifiutato;
 - file finale esistente rifiutato senza overwrite;
+- scrittura verso `pratica.entitydict.json`, `pratica.approvals.json`, `pratica.writes.json`,
+  `pratica.sensitivity.json`, `pratica.searchindex.db` sempre rifiutata;
 - pseudonimo ambiguo segnalato/bloccato;
 - return MCP privo di PII.
 

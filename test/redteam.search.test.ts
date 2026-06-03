@@ -10,6 +10,7 @@ import type { AnonyMcpConfig } from '../src/types.js'
 
 let dir: string
 let client: Client
+let registry: PracticeRegistry
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'anonymcp-search-'))
@@ -21,7 +22,9 @@ beforeAll(async () => {
     allowCloudForSensitive: false,
     logLevel: 'error'
   }
-  const { server, registry } = buildServer(config)
+  const built = buildServer(config)
+  const { server } = built
+  registry = built.registry
   await registry.scan('p1')
   const [ct, st] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: 'test', version: '1.0.0' })
@@ -29,6 +32,7 @@ beforeAll(async () => {
 })
 
 afterAll(() => {
+  registry.closeIndexes()
   rmSync(dir, { recursive: true, force: true })
 })
 
