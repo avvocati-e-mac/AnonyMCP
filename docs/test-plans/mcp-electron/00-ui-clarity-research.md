@@ -59,7 +59,7 @@ Il costo piu' alto e' esporre dati personali reali al canale MCP/LLM cloud.
 La UI deve prevenire prima questi errori:
 
 - approvare senza review;
-- scambiare approvazione locale per esposizione cloud;
+- scambiare approvazione locale per esposizione MCP/LLM;
 - sbloccare documenti sensibili con un click inconsapevole;
 - confermare una bozza re-idratata senza capire che contiene dati reali;
 - credere che la UI e il client LLM stiano usando la stessa config quando non e' verificato.
@@ -77,7 +77,7 @@ L'utente non deve ricordare cosa significa un colore o uno stato visto in un'alt
 Test mcp-electron:
 
 - aprire una review e verificare che la schermata ripeta pratica, documento, stato review,
-  stato cloud e sensibilita';
+  stato MCP/LLM e sensibilita';
 - verificare che i filtri della dashboard siano leggibili senza conoscere il codice.
 
 ### Errori comprensibili e azionabili

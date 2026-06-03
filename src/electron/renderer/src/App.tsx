@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle2,
+  Cloud,
+  EyeOff,
   FileWarning,
   FolderPlus,
   ListChecks,
@@ -405,9 +408,9 @@ function SetupScreen({
 function statusLabel(status: ReviewDocumentListItem['status']): string {
   switch (status) {
     case 'approved':
-      return 'Approvato'
+      return 'Approvato localmente'
     case 'review_required':
-      return 'Da review'
+      return 'Da rivedere'
     case 'quarantined':
       return 'Quarantena'
     case 'superseded':
@@ -428,14 +431,131 @@ function compactPath(path: string | undefined): string {
   return parts.slice(-2).join('/') || path
 }
 
+type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'local'
+
+function statusPillClass(tone: StatusTone): string {
+  switch (tone) {
+    case 'info':
+      return 'border-blue-200 bg-blue-50 text-blue-800'
+    case 'success':
+      return 'border-green-200 bg-green-50 text-green-800'
+    case 'warning':
+      return 'border-amber-200 bg-amber-50 text-amber-900'
+    case 'danger':
+      return 'border-red-200 bg-red-50 text-red-800'
+    case 'local':
+      return 'border-slate-300 bg-slate-100 text-slate-800'
+    default:
+      return 'border-slate-200 bg-white text-slate-700'
+  }
+}
+
+function StatusPill({ label, tone, icon }: { label: string; tone: StatusTone; icon?: ReactNode }): React.JSX.Element {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${statusPillClass(tone)}`}>
+      {icon}
+      {label}
+    </span>
+  )
+}
+
+function reviewTone(status: ReviewDocumentListItem['status']): StatusTone {
+  if (status === 'approved') return 'success'
+  if (status === 'superseded') return 'danger'
+  return 'warning'
+}
+
+function sensitivityTone(doc: Pick<ReviewDocumentListItem, 'sensitive' | 'sensitiveSuggested' | 'sensitivityOverride'>): StatusTone {
+  if (doc.sensitivityOverride === 'not_sensitive') return 'success'
+  if (doc.sensitive || doc.sensitiveSuggested || doc.sensitivityOverride === 'sensitive') return 'warning'
+  return 'neutral'
+}
+
+function mcpExposureLabel(doc: Pick<ReviewDocumentListItem, 'status' | 'sensitive' | 'sensitiveSuggested' | 'sensitivityOverride' | 'exposable'>): string {
+  const sensitiveBlocked = doc.sensitivityOverride === 'sensitive' || doc.sensitive || (doc.sensitiveSuggested && doc.sensitivityOverride !== 'not_sensitive')
+  if (doc.exposable) return 'Disponibile via MCP/LLM'
+  if (sensitiveBlocked) return 'Bloccato MCP/LLM'
+  if (doc.status !== 'approved') return 'Non disponibile prima della review'
+  return 'Non disponibile via MCP/LLM'
+}
+
+function mcpExposureTone(label: string): StatusTone {
+  if (label.startsWith('Disponibile')) return 'info'
+  if (label.startsWith('Bloccato')) return 'warning'
+  return 'neutral'
+}
+
+function DocumentStatusStrip({ doc }: { doc: ReviewDocumentDetail | ReviewDocumentListItem }): React.JSX.Element {
+  const exposure = mcpExposureLabel(doc)
+  return (
+    <div className="flex flex-wrap gap-2">
+      <StatusPill label="Locale reale" tone="local" icon={<Lock size={13} />} />
+      <StatusPill label={statusLabel(doc.status)} tone={reviewTone(doc.status)} />
+      <StatusPill label={sensitivityLabel(doc)} tone={sensitivityTone(doc)} />
+      <StatusPill label={exposure} tone={mcpExposureTone(exposure)} icon={<Cloud size={13} />} />
+    </div>
+  )
+}
+
+function ExposureZonesPanel({ dashboard, status }: { dashboard: DashboardSummary | null; status: AppStatus }): React.JSX.Element {
+  const totals = dashboard?.totals
+  const zones: { title: string; value: number; body: string; tone: StatusTone; icon: ReactNode }[] = [
+    {
+      title: 'Locale reale',
+      value: status.configuredFolders,
+      body: 'Pratiche, path e bozze re-idratate restano sul computer.',
+      tone: 'local',
+      icon: <Lock size={18} />
+    },
+    {
+      title: 'Review umana',
+      value: totals?.reviewRequired ?? 0,
+      body: 'Documenti da controllare prima di qualunque esposizione MCP.',
+      tone: 'warning',
+      icon: <ListChecks size={18} />
+    },
+    {
+      title: 'MCP/LLM',
+      value: totals?.exposed ?? 0,
+      body: 'Solo testo pseudonimizzato, approvato e consentito dalla policy.',
+      tone: 'info',
+      icon: <Cloud size={18} />
+    },
+    {
+      title: 'Bloccato MCP',
+      value: totals?.cloudBlockedSensitiveDocs ?? 0,
+      body: 'Documenti sensibili o non consentiti al canale LLM cloud.',
+      tone: 'danger',
+      icon: <EyeOff size={18} />
+    }
+  ]
+
+  return (
+    <section className="grid gap-4 md:grid-cols-4">
+      {zones.map((zone) => (
+        <div key={zone.title} className={`rounded-lg border p-4 ${statusPillClass(zone.tone)}`}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              {zone.icon}
+              {zone.title}
+            </div>
+            <span className="text-2xl font-semibold">{zone.value}</span>
+          </div>
+          <p className="mt-3 text-xs leading-5">{zone.body}</p>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 type ActivityFilter = 'all' | 'review' | 'sensitive' | 'writes' | 'approved'
 
 const ACTIVITY_FILTERS: { id: ActivityFilter; label: string }[] = [
   { id: 'all', label: 'Tutti' },
-  { id: 'review', label: 'Da review' },
+  { id: 'review', label: 'Da rivedere' },
   { id: 'sensitive', label: 'Sensibili' },
   { id: 'writes', label: 'Bozze' },
-  { id: 'approved', label: 'Approvati' }
+  { id: 'approved', label: 'Approvati localmente' }
 ]
 
 interface ActivityRow {
@@ -548,6 +668,166 @@ function highlightText(
   return out
 }
 
+function ReviewPreflight({ detail, selectedKeys }: { detail: ReviewDocumentDetail; selectedKeys: Set<string> }): React.JSX.Element {
+  const selectedCount = detail.entities.filter((entity) => selectedKeys.has(entityKey(entity))).length
+  const exposure = mcpExposureLabel(detail)
+  const residualRisk = Math.round(detail.residualRisk * 100)
+  const checks: { label: string; value: string; tone: StatusTone }[] = [
+    {
+      label: 'Entita confermate',
+      value: detail.entities.length === 0 ? 'Nessuna rilevata: controlla manualmente' : `${selectedCount}/${detail.entities.length}`,
+      tone: detail.entities.length === 0 || selectedCount < detail.entities.length ? 'warning' : 'success'
+    },
+    {
+      label: 'Sensibilita',
+      value: sensitivityLabel(detail),
+      tone: sensitivityTone(detail)
+    },
+    {
+      label: 'Canale MCP/LLM',
+      value: exposure,
+      tone: mcpExposureTone(exposure)
+    },
+    {
+      label: 'Rischio residuo',
+      value: `${residualRisk}%`,
+      tone: residualRisk >= 50 ? 'danger' : residualRisk >= 20 ? 'warning' : 'neutral'
+    }
+  ]
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="text-sm font-medium text-slate-900">Prima di approvare</div>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        L'approvazione e' locale. La disponibilita' via MCP/LLM dipende anche da sensibilita' e policy.
+      </p>
+      <div className="mt-3 space-y-2">
+        {checks.map((check) => (
+          <div key={check.label} className="flex items-start justify-between gap-3 rounded-md border border-slate-100 px-2.5 py-2 text-xs">
+            <span className="font-medium text-slate-700">{check.label}</span>
+            <span className={`rounded-full border px-2 py-0.5 text-right ${statusPillClass(check.tone)}`}>{check.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SensitivityDecisionPanel({
+  detail,
+  onChange
+}: {
+  detail: ReviewDocumentDetail
+  onChange: (decision: 'sensitive' | 'not_sensitive' | null) => void
+}): React.JSX.Element {
+  const current = detail.sensitivityOverride ?? null
+  const choices: {
+    decision: 'sensitive' | 'not_sensitive' | null
+    title: string
+    body: string
+    tone: StatusTone
+  }[] = [
+    {
+      decision: 'sensitive',
+      title: 'Sensibile - blocca MCP/LLM',
+      body: 'Il documento puo essere approvato localmente, ma resta non disponibile al canale LLM cloud.',
+      tone: 'warning'
+    },
+    {
+      decision: 'not_sensitive',
+      title: 'Non sensibile nel contesto',
+      body: 'Dopo la review, il testo pseudonimizzato puo diventare disponibile via MCP se la policy lo consente.',
+      tone: 'neutral'
+    },
+    {
+      decision: null,
+      title: 'Usa suggerimento AnonyMCP',
+      body: 'Mantiene la classificazione suggerita dal motore locale fino a nuova decisione professionale.',
+      tone: 'info'
+    }
+  ]
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <h3 className="text-sm font-medium text-slate-900">Sensibilita</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        AnonyMCP suggerisce; la decisione finale sul contesto e' del professionista.
+      </p>
+      <div className="mt-3 grid gap-2">
+        {choices.map((choice) => {
+          const selected = current === choice.decision
+          return (
+            <button
+              key={choice.title}
+              type="button"
+              onClick={() => onChange(choice.decision)}
+              className={[
+                'rounded-md border p-3 text-left text-sm transition',
+                selected ? statusPillClass(choice.tone) : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              ].join(' ')}
+            >
+              <span className="flex items-start justify-between gap-3">
+                <span className="font-medium">{choice.title}</span>
+                {selected ? <CheckCircle2 size={16} /> : null}
+              </span>
+              <span className="mt-1 block text-xs leading-5">{choice.body}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function PendingWriteProvenance({ detail }: { detail: PendingWriteDetail }): React.JSX.Element {
+  const steps = [
+    { title: 'LLM', body: 'Ha scritto usando pseudonimi.' },
+    { title: 'AnonyMCP locale', body: 'Re-idrata sul computer.' },
+    { title: 'Cartella pratica', body: 'Salva solo dopo conferma.' }
+  ]
+
+  return (
+    <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
+        {steps.map((step, index) => (
+          <div key={step.title} className="contents">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="text-sm font-medium text-slate-900">{step.title}</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">{step.body}</div>
+            </div>
+            {index < steps.length - 1 ? <ArrowRight className="hidden self-center text-slate-400 md:block" size={18} /> : null}
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 text-xs leading-5 text-slate-500">
+        Percorso richiesto: <span className="font-medium text-slate-700">{detail.relPath}</span>. Il testo sotto puo contenere dati reali solo nella UI locale.
+      </div>
+    </div>
+  )
+}
+
+function PendingWritePreflight({ detail }: { detail: PendingWriteDetail }): React.JSX.Element {
+  const checks: { label: string; value: string; tone: StatusTone }[] = [
+    { label: 'Path relativo nella pratica', value: 'validato dal server locale', tone: 'success' },
+    { label: 'Bozza invariata', value: detail.hashMatches ? 'hash corrisponde' : 'hash non corrisponde', tone: detail.hashMatches ? 'success' : 'danger' },
+    { label: 'Conferma umana', value: 'necessaria prima del salvataggio finale', tone: 'warning' }
+  ]
+
+  return (
+    <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="text-sm font-medium text-slate-900">Controlli prima del salvataggio</div>
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
+        {checks.map((check) => (
+          <div key={check.label} className={`rounded-md border p-3 text-xs leading-5 ${statusPillClass(check.tone)}`}>
+            <div className="font-medium">{check.label}</div>
+            <div className="mt-1">{check.value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ReviewDetailPanel({
   detail,
   selectedKeys,
@@ -580,6 +860,11 @@ function ReviewDetailPanel({
   const originalRef = useRef<HTMLDivElement | null>(null)
   const pseudonymRef = useRef<HTMLDivElement | null>(null)
   const syncingRef = useRef(false)
+  const entityTypeCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const entity of detail.entities) counts.set(entity.type, (counts.get(entity.type) ?? 0) + 1)
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [detail.entities])
 
   function requestSensitivityChange(decision: 'sensitive' | 'not_sensitive' | null): void {
     if (decision === 'not_sensitive' && (detail.sensitive || detail.sensitiveSuggested)) {
@@ -610,7 +895,7 @@ function ReviewDetailPanel({
         <div className="min-w-0">
           <h2 className="truncate font-medium text-slate-900">{detail.fileName}</h2>
           <div className="mt-1 text-sm text-slate-500">
-            {detail.label} - {statusLabel(detail.status)} - {sensitivityLabel(detail)}
+            Pratica {detail.label} - review locale del documento
           </div>
         </div>
         <button
@@ -618,39 +903,86 @@ function ReviewDetailPanel({
           onClick={onClose}
           className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
         >
-          Chiudi
+          Torna alla dashboard
         </button>
       </div>
 
-      <div className="grid gap-4 p-5 lg:grid-cols-2">
-        <div>
-          <div className="mb-2 text-sm font-medium text-slate-700">Originale locale</div>
+      <div className="border-b border-slate-100 px-5 py-3">
+        <DocumentStatusStrip doc={detail} />
+      </div>
+
+      <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_22rem]">
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Originale locale</div>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Contiene dati reali. Serve solo per la review sul computer.</p>
+            </div>
+            <StatusPill label="Solo locale" tone="local" icon={<Lock size={13} />} />
+          </div>
           <div
             ref={originalRef}
             onScroll={(event) => syncScroll(event.currentTarget, pseudonymRef.current)}
-            className="h-96 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800"
+            className="h-[28rem] overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800"
           >
             {highlightText(detail.originalText, detail.entities, 'original')}
           </div>
         </div>
-        <div>
-          <div className="mb-2 text-sm font-medium text-slate-700">Pseudonimizzato</div>
+        <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Pseudonimizzato</div>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Questo e' il testo candidato al canale MCP/LLM dopo approvazione e policy.</p>
+            </div>
+            <StatusPill label="Candidato MCP" tone="info" icon={<Cloud size={13} />} />
+          </div>
           <div
             ref={pseudonymRef}
             onScroll={(event) => syncScroll(event.currentTarget, originalRef.current)}
-            className="h-96 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800"
+            className="h-[28rem] overflow-auto whitespace-pre-wrap rounded-md border border-blue-100 bg-white p-3 font-mono text-xs leading-5 text-slate-800"
           >
             {highlightText(detail.anonymizedText, detail.entities, 'pseudonym')}
           </div>
         </div>
+        <aside className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Decisioni</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Prima controlla le entita', poi applica la selezione e approva localmente.
+            </p>
+          </div>
+          <ReviewPreflight detail={detail} selectedKeys={selectedKeys} />
+          <SensitivityDecisionPanel detail={detail} onChange={requestSensitivityChange} />
+          {actionError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</div>
+          ) : null}
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={actionBusy}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+            Applica selezione e approva localmente
+          </button>
+        </aside>
       </div>
 
       <div className="grid gap-4 border-t border-slate-100 p-5 lg:grid-cols-[1fr_320px]">
         <div>
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-slate-900">Entita' da confermare</h3>
+            <h3 className="text-sm font-medium text-slate-900">Entita' rilevate da confermare</h3>
             <span className="text-xs text-slate-500">Rischio residuo {Math.round(detail.residualRisk * 100)}%</span>
           </div>
+          {entityTypeCounts.length ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {entityTypeCounts.map(([type, count]) => (
+                <span key={type} className={`rounded-full px-2.5 py-1 text-xs ring-1 ${entityColorClass(type as ReviewDocumentDetail['entities'][number]['type'])}`}>
+                  {type} {count}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="max-h-[32rem] overflow-auto rounded-md border border-slate-200">
             {detail.entities.length ? (
               detail.entities.map((entity) => {
@@ -678,7 +1010,7 @@ function ReviewDetailPanel({
                 )
               })
             ) : (
-              <div className="p-4 text-sm text-slate-500">Nessuna entita' rilevata.</div>
+              <div className="p-4 text-sm text-slate-500">Nessuna entita' rilevata. Controlla comunque il testo: il riconoscimento automatico non e' perfetto.</div>
             )}
           </div>
         </div>
@@ -712,40 +1044,13 @@ function ReviewDetailPanel({
             </button>
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-3">
-            <h3 className="text-sm font-medium text-slate-900">Sensibilita'</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              AnonyMCP suggerisce; la decisione finale sul contesto e' dell'avvocato.
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <h3 className="text-sm font-medium text-slate-900">Checklist manuale</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Verifica persone, codici fiscali/P.IVA, indirizzi, dati bancari, email/PEC/telefoni,
+              numeri di ruolo o protocolli e altri riferimenti identificativi.
             </p>
-            <div className="mt-2 grid gap-2">
-              <button type="button" onClick={() => requestSensitivityChange('sensitive')} className="rounded-md border border-amber-300 px-3 py-2 text-left text-sm text-amber-900 hover:bg-amber-50">
-                Sensibile - blocca cloud
-              </button>
-              <button type="button" onClick={() => requestSensitivityChange('not_sensitive')} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
-                Non sensibile nel contesto
-              </button>
-              <p className="text-xs text-slate-500">
-                Se AnonyMCP ha suggerito sensibilita', questa scelta richiede conferma professionale.
-              </p>
-              <button type="button" onClick={() => requestSensitivityChange(null)} className="rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">
-                Usa suggerimento
-              </button>
-            </div>
           </div>
-
-          {actionError ? (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</div>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={onApprove}
-            disabled={actionBusy}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-            Applica e approva
-          </button>
         </div>
       </div>
     </section>
@@ -769,14 +1074,16 @@ function PendingWritePanel({
     <section className="rounded-lg border border-slate-200 bg-white">
       <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
         <div className="min-w-0">
-          <h2 className="truncate font-medium text-slate-900">{detail.fileName}</h2>
-          <div className="mt-1 text-sm text-slate-500">{detail.label} - {detail.relPath}</div>
+          <h2 className="truncate font-medium text-slate-900">Bozza re-idratata locale: {detail.fileName}</h2>
+          <div className="mt-1 text-sm text-slate-500">Pratica {detail.label} - bozza in attesa di conferma</div>
         </div>
         <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
           Chiudi
         </button>
       </div>
       <div className="p-5">
+        <PendingWriteProvenance detail={detail} />
+        <PendingWritePreflight detail={detail} />
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <div className="font-medium">Bozza re-idratata locale</div>
           <p className="mt-1">
@@ -800,7 +1107,7 @@ function PendingWritePanel({
           className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
         >
           {busy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-          Conferma salvataggio
+          Salva nella pratica locale
         </button>
       </div>
     </section>
@@ -840,8 +1147,8 @@ function Dashboard({
   const cards = useMemo(
     () => [
       { label: 'Pratiche configurate', value: totals?.practices ?? status.configuredFolders, icon: FolderPlus },
-      { label: 'Documenti da review', value: totals?.reviewRequired ?? 0, icon: ListChecks },
-      { label: 'Sensibili bloccati cloud', value: totals?.cloudBlockedSensitiveDocs ?? 0, icon: FileWarning },
+      { label: 'Documenti da rivedere', value: totals?.reviewRequired ?? 0, icon: ListChecks },
+      { label: 'Bloccati MCP/LLM', value: totals?.cloudBlockedSensitiveDocs ?? 0, icon: FileWarning },
       { label: 'Bozze LLM in attesa', value: totals?.pendingWrites ?? 0, icon: Lock }
     ],
     [status.configuredFolders, totals]
@@ -856,7 +1163,7 @@ function Dashboard({
       document: doc.fileName,
       review: statusLabel(doc.status),
       sensitivity: sensitivityLabel(doc),
-      cloud: doc.exposable ? 'Disponibile' : doc.sensitive || doc.sensitiveSuggested ? 'Bloccato' : 'Non disponibile',
+      cloud: mcpExposureLabel(doc),
       isReview: doc.status !== 'approved',
       isSensitive: doc.sensitive || doc.sensitiveSuggested || doc.sensitivityOverride === 'sensitive',
       isApproved: doc.status === 'approved',
@@ -874,7 +1181,7 @@ function Dashboard({
         document: doc.fileName,
         review: statusLabel(doc.status),
         sensitivity: sensitivityLabel(doc),
-        cloud: 'Bloccato',
+        cloud: 'Bloccato MCP/LLM',
         isReview: doc.status !== 'approved',
         isSensitive: true,
         isApproved: doc.status === 'approved',
@@ -891,7 +1198,7 @@ function Dashboard({
         document: write.fileName,
         review: 'Bozza LLM',
         sensitivity: 'Da confermare',
-        cloud: 'Locale',
+        cloud: 'Locale reale',
         isReview: false,
         isSensitive: false,
         isApproved: false,
@@ -1082,7 +1389,7 @@ function Dashboard({
             <div>
               <h1 className="text-lg font-semibold text-slate-900">Dashboard generale</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Controlla cosa blocca l'uso del LLM cloud e quali attivita' richiedono una decisione.
+                Controlla cosa resta locale, cosa richiede review e cosa puo diventare disponibile via MCP/LLM.
               </p>
               <div className="mt-4 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
                 <div>
@@ -1108,6 +1415,8 @@ function Dashboard({
             </span>
           </div>
         </section>
+
+        <ExposureZonesPanel dashboard={dashboard} status={status} />
 
         <section className="grid gap-4 md:grid-cols-4">
           {cards.map(({ label, value, icon: Icon }) => (
@@ -1140,12 +1449,12 @@ function Dashboard({
                         {practice.matter}
                       </span>
                     </div>
-                    <div className="mt-1 truncate text-sm text-slate-500">{practice.path}</div>
+                    <div className="mt-1 truncate text-sm text-slate-500">Path locale: {compactPath(practice.path)}</div>
                     <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
-                      <span>{practice.reviewRequired} da review</span>
-                      <span>{practice.approved} approvati</span>
-                      <span>{practice.exposed} esposti al cloud</span>
-                      <span>{practice.cloudBlockedSensitiveDocs} sensibili bloccati</span>
+                      <span>{practice.reviewRequired} da rivedere</span>
+                      <span>{practice.approved} approvati localmente</span>
+                      <span>{practice.exposed} disponibili via MCP/LLM</span>
+                      <span>{practice.cloudBlockedSensitiveDocs} bloccati MCP/LLM</span>
                     </div>
                   </div>
                   <button
@@ -1187,7 +1496,7 @@ function Dashboard({
             <div>
               <h2 className="font-medium text-slate-900">Attivita'</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Documenti, sensibilita' e bozze in una lista compatta.
+                Documenti, sensibilita', stato MCP/LLM e bozze in una lista compatta.
               </p>
             </div>
             <input
@@ -1222,7 +1531,7 @@ function Dashboard({
                   <th className="px-5 py-3">Documento</th>
                   <th className="px-5 py-3">Review</th>
                   <th className="px-5 py-3">Sensibilita'</th>
-                  <th className="px-5 py-3">Cloud</th>
+                  <th className="px-5 py-3">MCP/LLM</th>
                   <th className="px-5 py-3 text-right">Azione</th>
                 </tr>
               </thead>
@@ -1241,7 +1550,11 @@ function Dashboard({
                           {row.sensitivity}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.cloud}</td>
+                      <td className="whitespace-nowrap px-5 py-3">
+                        <span className={`rounded-full border px-2 py-1 text-xs ${statusPillClass(row.kind === 'write' ? 'local' : mcpExposureTone(row.cloud))}`}>
+                          {row.cloud}
+                        </span>
+                      </td>
                       <td className="whitespace-nowrap px-5 py-3 text-right">
                         <button
                           type="button"

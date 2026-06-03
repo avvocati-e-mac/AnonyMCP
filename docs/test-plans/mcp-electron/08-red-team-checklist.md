@@ -11,11 +11,11 @@ diventare issue, test automatico o modifica UI.
 - Se compare un dato reale, fermare il test e non continuare a leggere la schermata.
 - Non usare output di `mcp-electron` come prova legale di sicurezza; e' uno strumento di collaudo UI.
 
-## Confine locale/cloud
+## Confine locale/MCP-LLM
 
-- La UI distingue `locale` da `LLM cloud`.
-- `Approvato localmente` non e' presentato come sinonimo di `Disponibile al cloud`.
-- Documenti sensibili restano `Bloccato cloud` con policy default.
+- La UI distingue `locale` da `MCP/LLM cloud`.
+- `Approvato localmente` non e' presentato come sinonimo di `Disponibile via MCP/LLM`.
+- Documenti sensibili restano `Bloccato MCP/LLM` con policy default.
 - La path reale della pratica e' presentata come informazione locale utile.
 - La path reale non compare in testi descritti come visibili al LLM.
 - FolderId e label MCP sono opachi.
@@ -25,26 +25,27 @@ diventare issue, test automatico o modifica UI.
 
 - Il badge `MCP configurato` non basta da solo a rassicurare l'utente.
 - Esiste un warning su possibile config diversa tra UI e client LLM.
-- I KPI non nascondono documenti sensibili o da review.
+- I KPI non nascondono documenti sensibili o da rivedere.
 - Il colore verde non viene usato per stati diversi senza testo esplicito.
 - L'onboarding non promette anonimizzazione completa.
 
 ## Review
 
-- `Originale locale` e `Pseudonimizzato` sono separati e nominati chiaramente.
+- `Originale locale`, `Pseudonimizzato` e `Decisioni` sono separati e nominati chiaramente.
+- Il riquadro `Prima di approvare` e' visibile prima dell'azione primaria.
 - La lista entita' mostra tipo, originale, pseudonimo, fonte e occorrenze.
 - L'utente puo' aggiungere entita' mancanti.
 - Deselezionare entita' importanti non e' facile da fare per errore.
-- `Applica e approva` e' distinguibile da `Chiudi`.
+- `Applica selezione e approva localmente` e' distinguibile da `Torna alla dashboard`.
 - Chiudere la review non approva.
 
 ## Sensibilita'
 
 - La UI dice che AnonyMCP suggerisce e l'avvocato decide.
-- `Sensibile - blocca cloud` e' chiaro.
+- `Sensibile - blocca MCP/LLM` e' chiaro.
 - `Non sensibile nel contesto` non e' un click invisibile o banale.
 - `Usa suggerimento` ripristina il default prudente.
-- Approvare localmente un sensibile non lo espone al cloud.
+- Approvare localmente un sensibile non lo espone a MCP/LLM.
 
 ## Bozze LLM
 
@@ -52,7 +53,8 @@ diventare issue, test automatico o modifica UI.
 - Il dettaglio bozza chiarisce che il contenuto re-idratato e' locale.
 - Bozza con hash non valido non si puo' confermare.
 - Ambiguita' pseudonimi non viene nascosta.
-- Confermare bozza non comunica esposizione cloud.
+- Il dettaglio bozza mostra la catena `LLM` -> `AnonyMCP locale` -> `Cartella pratica`.
+- Confermare bozza non comunica esposizione MCP/LLM.
 
 ## Errori e log
 

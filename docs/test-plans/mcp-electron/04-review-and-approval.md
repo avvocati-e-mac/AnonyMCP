@@ -18,15 +18,15 @@ Passi:
 
 1. Dalla dashboard aprire una riga con azione `Apri` o `Valuta`.
 2. Attendere la schermata review.
-3. Verificare la presenza di `Originale locale` e `Pseudonimizzato`.
-4. Verificare la presenza di lista entita' e pulsante `Applica e approva`.
+3. Verificare la presenza di `Originale locale`, `Pseudonimizzato` e `Decisioni` come zone distinte.
+4. Verificare la presenza di `Prima di approvare`, lista entita' e pulsante `Applica selezione e approva localmente`.
 
 Atteso:
-La schermata chiarisce che il testo originale e' locale e che il testo pseudonimizzato e' quello
-destinato al canale sicuro.
+La schermata chiarisce che il testo originale e' locale, che il testo pseudonimizzato e' solo
+candidato al canale MCP/LLM e che l'approvazione resta una decisione locale.
 
 Red team:
-Controllare se il titolo o il copy fanno sembrare il testo originale gia' sicuro per il cloud.
+Controllare se il titolo o il copy fanno sembrare il testo originale gia' sicuro per MCP/LLM.
 
 Fallimento grave se:
 La review non distingue originale locale e pseudonimizzato.
@@ -114,7 +114,7 @@ Deselezionare una PII importante e verificare se la UI avvisa abbastanza prima d
 Fallimento grave se:
 Un utente puo' togliere una PII dalla pseudonimizzazione senza rendersene conto.
 
-## REV-005 - Applica e approva
+## REV-005 - Applica selezione e approva localmente
 
 Scopo:
 Verificare che approvare aggiorni lo stato e riporti l'utente alla dashboard.
@@ -129,20 +129,21 @@ Passi:
 
 1. Aprire review.
 2. Lasciare selezionate le entita' rilevate.
-3. Cliccare `Applica e approva`.
-4. Attendere ritorno o aggiornamento dashboard.
-5. Verificare che il documento cambi stato.
+3. Leggere il riquadro `Prima di approvare`.
+4. Cliccare `Applica selezione e approva localmente`.
+5. Attendere ritorno o aggiornamento dashboard.
+6. Verificare che il documento cambi stato.
 
 Atteso:
-Il documento non e' piu' da review. La disponibilita' cloud dipende comunque dalla sensibilita'
+Il documento non e' piu' da review. La disponibilita' MCP/LLM dipende comunque dalla sensibilita'
 e dalla policy.
 
 Red team:
-Approvare un documento sensibile e verificare che non diventi automaticamente disponibile al
-cloud se `allowCloudForSensitive=false`.
+Approvare un documento sensibile e verificare che non diventi automaticamente disponibile via
+MCP/LLM se `allowCloudForSensitive=false`.
 
 Fallimento grave se:
-Approvazione locale equivale automaticamente a esposizione cloud per documenti sensibili.
+Approvazione locale equivale automaticamente a esposizione MCP/LLM per documenti sensibili.
 
 ## REV-006 - Chiusura senza approvare
 
@@ -158,12 +159,12 @@ Pratiche sintetiche.
 Passi:
 
 1. Aprire review.
-2. Cliccare `Chiudi`.
+2. Cliccare `Torna alla dashboard`.
 3. Verificare il ritorno alla dashboard.
 4. Verificare che lo stato del documento non sia approvato per errore.
 
 Atteso:
-La chiusura non approva e non cambia esposizione cloud.
+La chiusura non approva e non cambia esposizione MCP/LLM.
 
 Red team:
 Modificare campi manuali e chiudere; verificare se l'utente capisce che le modifiche non sono

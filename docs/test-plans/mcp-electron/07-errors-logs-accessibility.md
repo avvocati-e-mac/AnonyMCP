@@ -133,7 +133,7 @@ Atteso:
 Focus prevedibile e azioni chiare.
 
 Red team:
-Provare Tab nella review vicino a `Applica e approva` e nelle opzioni sensibilita'.
+Provare Tab nella review vicino a `Applica selezione e approva localmente` e nelle opzioni sensibilita'.
 
 Fallimento grave se:
 La tastiera attiva approvazione o cambio sensibilita' senza controllo visibile.
@@ -152,7 +152,7 @@ Dashboard e review sintetiche.
 Passi:
 
 1. Leggere dashboard.
-2. Verificare che badge colorati abbiano testo: `Bloccato`, `Da review`, `Disponibile`.
+2. Verificare che badge colorati abbiano testo: `Bloccato MCP/LLM`, `Da rivedere`, `Disponibile via MCP/LLM`.
 3. Aprire review e controllare entita'.
 4. Verificare che il tipo entita' sia scritto, non solo colorato.
 
@@ -163,7 +163,7 @@ Red team:
 Immaginare uno screenshot in bianco e nero: gli stati restano comprensibili?
 
 Fallimento grave se:
-Lo stato cloud o sensibilita' dipende solo dal colore.
+Lo stato MCP/LLM o sensibilita' dipende solo dal colore.
 
 ## ERR-003 - Errori non colpevolizzanti
 

@@ -31,7 +31,7 @@ La bozza e' trattata come attivita' locale da confermare, non come output gia' s
 pratica.
 
 Red team:
-Verificare che la bozza non appaia come documento disponibile al cloud.
+Verificare che la bozza non appaia come documento disponibile via MCP/LLM.
 
 Fallimento grave se:
 Una bozza re-idratata sembra gia' salvata o disponibile senza conferma.
@@ -52,8 +52,10 @@ Passi:
 1. Cliccare `Conferma bozza`.
 2. Leggere il pannello dettaglio.
 3. Verificare path relativa, file name, hashMatches e contenuto.
-4. Verificare se il copy chiarisce che la bozza e' locale e re-idratata.
-5. Verificare che compaia un warning esplicito: il testo puo' contenere dati reali reinseriti
+4. Verificare che compaia la catena `LLM` -> `AnonyMCP locale` -> `Cartella pratica`.
+5. Verificare la presenza di `Controlli prima del salvataggio`.
+6. Verificare se il copy chiarisce che la bozza e' locale e re-idratata.
+7. Verificare che compaia un warning esplicito: il testo puo' contenere dati reali reinseriti
    localmente e il LLM ha lavorato sui pseudonimi.
 
 Atteso:
@@ -61,7 +63,8 @@ L'utente capisce che sta vedendo una bozza locale destinata alla cartella pratic
 puo' contenere dati reali sul computer, non ricevuti dal LLM.
 
 Red team:
-Cercare ambiguita' tra `testo ricevuto dal LLM` e `testo re-idratato locale`.
+Cercare ambiguita' tra `testo ricevuto dal LLM`, `testo re-idratato locale` e file finale nella
+cartella pratica.
 
 Fallimento grave se:
 Il pannello non chiarisce che il contenuto puo' contenere dati reali locali.
@@ -83,7 +86,8 @@ Passi:
 2. Alterare il file staged in modo controllato.
 3. Aprire dettaglio bozza.
 4. Verificare messaggio `bozza in staging e' cambiata` o equivalente.
-5. Verificare che `Conferma salvataggio` sia disabilitato.
+5. Verificare che il controllo `Bozza invariata` segnali `hash non corrisponde`.
+6. Verificare che `Salva nella pratica locale` sia disabilitato.
 
 Atteso:
 La UI blocca la promozione se `hashMatches=false`.
@@ -94,7 +98,7 @@ Provare a cliccare comunque il pulsante o inviare Enter.
 Fallimento grave se:
 Una bozza modificata viene promossa.
 
-## WR-004 - Conferma salvataggio
+## WR-004 - Salva nella pratica locale
 
 Scopo:
 Verificare che confermare una bozza valida la rimuova dalla lista e salvi nella pratica locale.
@@ -108,7 +112,7 @@ Bozza sintetica valida.
 Passi:
 
 1. Aprire dettaglio bozza.
-2. Cliccare `Conferma salvataggio`.
+2. Cliccare `Salva nella pratica locale`.
 3. Attendere aggiornamento dashboard.
 4. Verificare che la bozza non sia piu' in attesa.
 
@@ -116,7 +120,7 @@ Atteso:
 La bozza viene promossa localmente e sparisce dalle attivita' pendenti.
 
 Red team:
-Verificare che il return UI non confonda salvataggio locale con esposizione cloud.
+Verificare che il return UI non confonda salvataggio locale con esposizione MCP/LLM.
 
 Fallimento grave se:
 Una bozza viene salvata senza conferma o resta in lista dopo promozione riuscita.

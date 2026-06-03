@@ -19,13 +19,13 @@ Passi:
 1. Scansionare le pratiche.
 2. Aprire dashboard.
 3. Cliccare filtro `Sensibili`.
-4. Verificare che compaiano documenti suggeriti sensibili o bloccati cloud.
+4. Verificare che compaiano documenti suggeriti sensibili o bloccati MCP/LLM.
 
 Atteso:
 I documenti sensibili non sono nascosti in una lista secondaria difficile da trovare.
 
 Red team:
-Verificare se il KPI `Sensibili bloccati cloud` e' coerente con il filtro.
+Verificare se il KPI `Bloccati MCP/LLM` e' coerente con il filtro.
 
 Fallimento grave se:
 Un documento sensibile non appare come urgente o bloccato.
@@ -58,10 +58,10 @@ automatica.
 Fallimento grave se:
 La UI delega implicitamente al sistema una decisione che deve restare professionale.
 
-## SEN-003 - Sensibile blocca cloud
+## SEN-003 - Sensibile blocca MCP/LLM
 
 Scopo:
-Verificare che impostare un documento come sensibile lo blocchi per il cloud.
+Verificare che impostare un documento come sensibile lo blocchi per MCP/LLM.
 
 Strumenti mcp-electron:
 `click_by_text`, `wait_for_text`, `get_body_text`.
@@ -72,18 +72,18 @@ Documento sintetico.
 Passi:
 
 1. Aprire review.
-2. Cliccare `Sensibile - blocca cloud`.
+2. Cliccare `Sensibile - blocca MCP/LLM`.
 3. Tornare o aggiornare dashboard.
-4. Verificare che la riga mostri `Bloccato` o equivalente nella colonna cloud.
+4. Verificare che la riga mostri `Bloccato MCP/LLM` o equivalente nella colonna `MCP/LLM`.
 
 Atteso:
 Il documento resta locale anche se puo' essere approvato localmente.
 
 Red team:
-Approvare dopo aver marcato sensibile e verificare che lo stato cloud resti bloccato.
+Approvare dopo aver marcato sensibile e verificare che lo stato MCP/LLM resti bloccato.
 
 Fallimento grave se:
-Un documento marcato sensibile diventa disponibile al cloud con policy default.
+Un documento marcato sensibile diventa disponibile via MCP/LLM con policy default.
 
 ## SEN-004 - Non sensibile nel contesto non deve essere troppo facile
 
@@ -101,12 +101,12 @@ Passi:
 1. Aprire review di un documento suggerito sensibile.
 2. Cliccare `Non sensibile nel contesto`.
 3. Verificare che la UI chieda una conferma forte quando il documento era suggerito sensibile.
-4. Verificare che la conferma spieghi l'effetto cloud dopo la review.
+4. Verificare che la conferma spieghi l'effetto MCP/LLM dopo la review.
 5. Non usare dati reali.
 
 Atteso:
 L'utente capisce che sta prendendo una decisione professionale e che puo' incidere sulla
-disponibilita' al cloud dopo review. Un click accidentale non deve bastare.
+disponibilita' via MCP/LLM dopo review. Un click accidentale non deve bastare.
 
 Red team:
 Valutare se un click accidentale puo' sbloccare il documento senza conferma forte.
