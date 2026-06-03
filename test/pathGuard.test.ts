@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { resolve } from 'node:path'
 import { isInside, isInternalArtifact, assertAllowed, sanitizeId } from '../src/util/pathGuard.js'
 
 describe('pathGuard', () => {
@@ -20,7 +21,9 @@ describe('pathGuard', () => {
   })
 
   it('assertAllowed ammette file dentro allowlist', () => {
-    expect(assertAllowed('/root/causa/atto.pdf', ['/root/causa'])).toBe('/root/causa/atto.pdf')
+    expect(assertAllowed('/root/causa/atto.pdf', ['/root/causa'])).toBe(
+      resolve('/root/causa/atto.pdf')
+    )
   })
 
   it('assertAllowed rifiuta file fuori allowlist', () => {

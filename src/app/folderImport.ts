@@ -94,15 +94,16 @@ export function buildExposedFolders(
   const out: ExposedFolder[] = []
 
   for (const candidate of [...candidates].sort((a, b) => a.createdAtMs - b.createdAtMs || a.path.localeCompare(b.path))) {
-    if (usedPaths.has(candidate.path)) continue
+    const candidatePath = resolve(candidate.path)
+    if (usedPaths.has(candidatePath)) continue
     const opaqueName = safeOpaqueName(candidate.name)
     const id = opaqueName && !usedIds.has(opaqueName) ? opaqueName : nextNumericId(usedIds)
     usedIds.add(id)
-    usedPaths.add(candidate.path)
+    usedPaths.add(candidatePath)
     out.push({
       id,
       label: id,
-      path: candidate.path,
+      path: candidatePath,
       matter: options.matter ?? 'altro'
     })
   }

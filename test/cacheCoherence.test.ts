@@ -6,6 +6,7 @@ import { PracticeRegistry } from '../src/practice/practiceRegistry.js'
 
 const PASS = 'test-cache-pass'
 let dirs: string[] = []
+let registries: PracticeRegistry[] = []
 function tmp(content: string): string {
   const d = mkdtempSync(join(tmpdir(), 'anonymcp-cache-'))
   writeFileSync(join(d, 'atto.md'), content, 'utf8')
@@ -13,6 +14,8 @@ function tmp(content: string): string {
   return d
 }
 afterEach(() => {
+  for (const registry of registries) registry.closeIndexes()
+  registries = []
   for (const d of dirs) rmSync(d, { recursive: true, force: true })
   dirs = []
 })
@@ -25,11 +28,13 @@ describe('coerenza pseudonimi tra sessioni (cache cifrata)', () => {
 
     // Sessione 1 (auto-approve → entries confermate, cache salvata).
     const r1 = new PracticeRegistry([{ id: 'p1', label: 'P1', path: dir }], false, PASS)
+    registries.push(r1)
     await r1.scan('p1')
     const text1 = r1.exposableDocs()[0]!.doc.result!.text
 
     // Sessione 2: nuovo registry (RAM vuota) che ricarica la cache.
     const r2 = new PracticeRegistry([{ id: 'p1', label: 'P1', path: dir }], false, PASS)
+    registries.push(r2)
     await r2.scan('p1')
     const text2 = r2.exposableDocs()[0]!.doc.result!.text
 
@@ -40,6 +45,7 @@ describe('coerenza pseudonimi tra sessioni (cache cifrata)', () => {
   it('senza cache (forward-only): nessun file .anonymcp scritto', async () => {
     const dir = tmp(DOC)
     const r = new PracticeRegistry([{ id: 'p1', label: 'P1', path: dir }], false)
+    registries.push(r)
     await r.scan('p1')
     // exposableDocs funziona comunque; la cache non è richiesta.
     expect(r.exposableDocs().length).toBe(1)
