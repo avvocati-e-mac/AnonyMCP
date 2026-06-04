@@ -357,7 +357,7 @@ visivamente simili a pulsanti, senza creare bottoni annidati.
 +--------------------------------------------------------------------------------+
 | Dashboard | Review 13 | Bloccati 4 | Bozze 1 | Scansione                     |
 +--------------------------------------------------------------------------------+
-| Locale reale 12 | Review umana 13 | MCP/LLM 8 | Bloccati MCP/LLM 4 | Bozze 1 |
+| Locale reale 13 | Review umana 13 | MCP/LLM 8 | Bloccati MCP/LLM 4 | Bozze 1 |
 +--------------------------------------------------------------------------------+
 | Cosa devo fare adesso?                                                        |
 | [Review umana   (13)]      Apri Review                                        |
@@ -391,11 +391,15 @@ Schermata `Scansione`:
 | Cerca nuovi documenti nelle pratiche. Nulla e' esposto via MCP/LLM senza       |
 | review.                         [Mostra tutte] [Cerca nuovi documenti...]     |
 +--------------------------------------------------------------------------------+
-| Scansione locale 1 di 12: pratica 300F. I conteggi si aggiornano al termine.   |
+| Scansione locale 1 di 13: pratica 300F. I conteggi si aggiornano al termine.   |
 |                                                   [Ferma dopo questa pratica]  |
 +--------------------------------------------------------------------------------+
-| 300F | Path locale: .../300F | 2 da rivedere | 0 bloccati | [Scansione...]    |
-| 400F | Path locale: .../400F | 1 da rivedere | 1 bloccato | [Cerca nuovi...]  |
+| 300F | [cartella] .../300F | 2 da rivedere | [Scansione...]                  |
+|      | 0 bloccati | 0 bozze                                                |
+| 400F | [cartella] .../400F | 1 da rivedere | [Cerca nuovi]                  |
+|      | 1 bloccato | 0 bozze                                                |
+| P1300  1300F | [cartella] .../1300F-label-diversa | 0 da rivedere | [Cerca nuovi] |
+|              | label UI opaco diverso dall'ID MCP, entrambi non identificanti        |
 +--------------------------------------------------------------------------------+
 ```
 

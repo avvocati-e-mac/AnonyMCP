@@ -22,7 +22,7 @@ Passi:
 3. Leggere il blocco superiore.
 4. Verificare la presenza di `Config UI`, `Hash config`, `Folder MCP locali`.
 5. Verificare che folderId/label siano opachi, per esempio `400f`, `215s`, `400F`, `215S`.
-6. Con config sintetica estesa, verificare che una lista di almeno 12 folder resti leggibile.
+6. Con config sintetica estesa, verificare che una lista di almeno 13 folder resti leggibile.
 7. Verificare che i badge della top nav non sostituiscano le informazioni su config e folder.
 
 Atteso:
@@ -253,7 +253,8 @@ Strumenti mcp-electron:
 `get_body_text`, `eval`, `take_screenshot` solo su sintetico.
 
 Dati:
-Config sintetica con almeno 12 pratiche e un documento con nome lungo.
+Config sintetica con almeno 13 pratiche, un documento con nome lungo e una pratica `P1300` con
+`folderId` `1300F`.
 
 Passi:
 
@@ -267,7 +268,11 @@ Passi:
    nascondere il pulsante `Apri`.
 8. Verificare con `document.documentElement.scrollWidth <= document.documentElement.clientWidth`
    che non ci sia overflow orizzontale.
-9. Ridimensionare: finestra stretta = 1 colonna, media = 2 colonne, larga = 3 colonne.
+9. Verificare che le pratiche con `label === folderId`, per esempio `300F`, non duplicano lo stesso
+   codice nella card.
+10. Verificare che la pratica `P1300` mostri anche il badge `1300F`, perche' `label` e `folderId`
+    sono diversi ma entrambi opachi.
+11. Ridimensionare: finestra stretta = 1 colonna, media = 2 colonne, larga = 3 colonne.
 
 Atteso:
 Molte pratiche e nomi lunghi non rompono dashboard, top nav o pagine dedicate; le azioni restano visibili.
@@ -291,13 +296,13 @@ Strumenti mcp-electron:
 `click_by_text`, `wait_for_text`, `get_body_text`, `debug_elements`.
 
 Dati:
-Config sintetica con almeno 12 pratiche.
+Config sintetica con almeno 13 pratiche.
 
 Passi:
 
 1. Aprire `Scansione` con molte pratiche configurate.
 2. Cliccare `Cerca nuovi documenti nelle pratiche`.
-3. Verificare la presenza di un messaggio di avanzamento, per esempio `Scansione locale 1 di 12`.
+3. Verificare la presenza di un messaggio di avanzamento, per esempio `Scansione locale 1 di 13`.
 4. Verificare che i pulsanti di scansione singola siano disabilitati durante la scansione.
 5. Verificare che il testo dica che la scansione e' locale e non espone nulla via MCP/LLM.
 6. Se la scansione dura abbastanza, cliccare `Ferma dopo questa pratica` e verificare che il copy

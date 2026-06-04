@@ -8,6 +8,7 @@ import {
   Cloud,
   CloudOff,
   FileScan,
+  FolderOpen,
   FolderPlus,
   Inbox,
   LayoutDashboard,
@@ -2079,25 +2080,32 @@ function Dashboard({
           {practiceCount === 0 ? (
             <div className="px-1 py-8 text-sm text-slate-500">Nessuna pratica caricata.</div>
           ) : visiblePractices.length ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {visiblePractices.map((practice) => {
                 const currentScan = scanningFolder === practice.folderId
+                const showFolderId = practice.label !== practice.folderId
                 return (
                   <article key={practice.folderId} className="flex min-h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium text-slate-900">{practice.label}</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{practice.folderId}</span>
+                        {showFolderId ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{practice.folderId}</span>
+                        ) : null}
                         <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{practice.matter}</span>
                       </div>
-                      <div className="mt-2 truncate text-sm text-slate-500" title={practice.path}>Path locale: {compactPath(practice.path)}</div>
-                      <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
-                        <span className="inline-flex rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-amber-800">{practice.reviewRequired} da rivedere</span>
-                        <span className="inline-flex rounded-md border border-green-100 bg-green-50 px-2 py-1 text-green-800">{practice.approved} approvati</span>
-                        <span className="inline-flex rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-blue-800">{practice.exposed} via MCP/LLM</span>
-                        <span className="inline-flex rounded-md border border-red-100 bg-red-50 px-2 py-1 text-red-800">{practice.cloudBlockedSensitiveDocs} bloccati</span>
+                      <div className="mt-2 flex min-w-0 items-start gap-1.5 text-sm text-slate-500" title={`Cartella sul computer: ${practice.path}`}>
+                        <FolderOpen className="mt-0.5 flex-shrink-0 text-slate-400" size={14} aria-hidden="true" />
+                        <span className="sr-only">Cartella sul computer: </span>
+                        <span className="min-w-0 truncate">{compactPath(practice.path)}</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-start gap-1.5 text-xs">
+                        <span className="inline-flex max-w-full rounded-full border border-amber-100 bg-amber-50 px-2 py-1 text-amber-800">{practice.reviewRequired} da rivedere</span>
+                        <span className="inline-flex max-w-full rounded-full border border-green-100 bg-green-50 px-2 py-1 text-green-800">{practice.approved} approvati</span>
+                        <span className="inline-flex max-w-full rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-blue-800">{practice.exposed} via MCP/LLM</span>
+                        <span className="inline-flex max-w-full rounded-full border border-red-100 bg-red-50 px-2 py-1 text-red-800">{practice.cloudBlockedSensitiveDocs} bloccati</span>
                         {practice.pendingWrites ? (
-                          <span className="inline-flex rounded-md border border-violet-100 bg-violet-50 px-2 py-1 text-violet-800">{practice.pendingWrites} bozze</span>
+                          <span className="inline-flex max-w-full rounded-full border border-violet-100 bg-violet-50 px-2 py-1 text-violet-800">{practice.pendingWrites} bozze</span>
                         ) : null}
                       </div>
                     </div>
@@ -2106,7 +2114,7 @@ function Dashboard({
                       aria-label={currentScan ? `Scansione in corso per pratica ${practice.folderId}` : `Cerca nuovi documenti nella pratica ${practice.folderId}`}
                       onClick={() => onScan(practice.folderId)}
                       disabled={scanBusy}
-                      className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                      className="mt-4 inline-flex h-10 max-w-full self-start items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
                     >
                       {currentScan ? <Loader2 className="animate-spin" size={16} /> : <FileScan size={16} />}
                       {currentScan ? 'Scansione...' : 'Cerca nuovi documenti'}
