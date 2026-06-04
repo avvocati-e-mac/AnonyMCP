@@ -30,6 +30,8 @@ npx vitest run test/<file>.test.ts   # un singolo file
 - **Red-team** (`test/redteam.*.test.ts`): docId, sanitizer (fuzzing), search guard, e M-Write
   (`redteam.write.test.ts`: traversal bloccato, return senza PII, staging, re-idratazione).
   `redteam.search.test.ts` copre anche il gate `allowCloudForSensitive=false`.
+  `redteam.entities.synthetic.test.ts` usa casi sintetici estesi da atti/perizie OCR per
+  verificare falsi negativi (leak) e falsi positivi che avvelenano il dizionario.
 - **Coerenza cache** (`test/cacheCoherence.test.ts`): pseudonimi stabili tra sessioni.
 
 ## Il test più importante: anti-leak

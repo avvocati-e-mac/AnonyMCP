@@ -44,9 +44,10 @@ function normalize(s: string): string {
 }
 
 /**
- * True se l'entità NER va scartata perché è in realtà un ruolo processuale
- * o un'intestazione di sezione (falso positivo tipico del BERT).
- * Applicato SOLO alle entità di source 'ner'.
+ * True se l'entità va scartata perché è in realtà un ruolo processuale,
+ * un'abbreviazione tecnica o un'intestazione di sezione. Nato per i falsi
+ * positivi NER, ma applicato anche ai PERSONA/ORGANIZZAZIONE regex: le
+ * intestazioni in maiuscolo non devono avvelenare il dizionario di pratica.
  */
 export function isVetoed(text: string): boolean {
   const n = normalize(text)
@@ -71,7 +72,7 @@ export function extractRegexEntities(text: string): RawEntity[] {
       // Usa il primo gruppo di cattura non vuoto, altrimenti l'intero match.
       const captured = m.slice(1).find((g) => g != null && g !== '') ?? m[0]
       const value = captured.trim()
-      if (value.length > 1) {
+      if (value.length > 1 && !((type === 'PERSONA' || type === 'ORGANIZZAZIONE') && isVetoed(value))) {
         // Offset del valore catturato dentro il testo (per risolvere overlap).
         const within = m[0].indexOf(captured)
         const start = m.index + (within >= 0 ? within : 0)

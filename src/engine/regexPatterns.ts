@@ -15,6 +15,13 @@ const JUDICIAL_ROLES =
 
 const UNICODE_NAME_TOKEN = String.raw`[\p{Lu}][\p{L}'’.-]*`
 const NAME_INLINE_SEP = String.raw`[^\S\r\n]+`
+const ADDRESS_CONTEXT =
+  String.raw`(?:residente(?:\s+attualmente)?|resideute|domiciliato|domiciliata|` +
+  String.raw`con\s+sede|sito|con\s+studio|[s5]tudio)`
+const STREET_PREFIX = String.raw`(?:Via|Viale|Piazza|Largo|Vicolo|Str\.|Loc\.|Fraz\.|V\.le)`
+const OCR_CAP = String.raw`[0-9OIl]{5}`
+const ORG_NAME_TOKEN = String.raw`(?:[\p{Lu}][\p{L}'’.-]+|d(?:el|ella|ei|i|a)|e)`
+const COMPANY_SUFFIX = String.raw`S\.?\s*[PpRr]\.?\s*[AaLl]\.?(?:\s|\b)`
 
 // ─── Header di sentenza ──────────────────────────────────────────────────────
 
@@ -70,12 +77,14 @@ export const LUOGO_NASCITA_PATTERN =
   /(?:nato|nata)\s+a\s+([A-ZÀ-Üa-zà-ü][A-Za-zÀ-ÿ\s]{1,30}?)\s+il\b/gi
 
 /** Indirizzo con prefisso contestuale (residente/domiciliato/con sede) — CAP obbligatorio. */
-export const INDIRIZZO_PATTERN_STANDARD =
-  /(?:residente(?:\s+attualmente)?|domiciliato|domiciliata|con\s+sede|sito)\s+(?:in\s+)?(?:Via|Viale|Piazza|Largo|Vicolo|Str\.|Loc\.|Fraz\.|V\.le)\s+[A-Za-zÀ-ÿ\s0-9,.']{3,50}(?:\s*[-–,]\s*\d{5}|\s*,?\s*\d{5})/gi
+export const INDIRIZZO_PATTERN_STANDARD = new RegExp(
+  String.raw`${ADDRESS_CONTEXT}\s*:?\s+(?:in\s+)?${STREET_PREFIX}\s+[\p{L}\s0-9,.'’\-]{3,70}(?:\s*[-–,]\s*${OCR_CAP}|\s*,?\s*${OCR_CAP})(?:\s+[\p{Lu}][\p{L}'’.-]+)?`,
+  'giu'
+)
 
 /** "Corso" come indirizzo solo con contesto di residenza/domicilio. */
 export const INDIRIZZO_PATTERN_CORSO =
-  /(?:residente(?:\s+attualmente)?|domiciliato|domiciliata|con\s+sede|sito)\s+(?:in\s+)?[Cc]orso\s+[A-ZÀ-Ü][A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,5},?\s*\d+[,\s]*(?:[-–]\s*)?\d{5}/gi
+  /(?:residente(?:\s+attualmente)?|resideute|domiciliato|domiciliata|con\s+sede|sito|con\s+studio|[s5]tudio)\s*:?(?:\s+in)?\s+[Cc]orso\s+[A-ZÀ-Ü][A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+){0,5},?\s*\d+[,\s]*(?:[-–]\s*)?[0-9OIl]{5}/gi
 
 /** Documento d'identità — con contesto o formato bare con contesto esplicito. */
 export const NUMERO_DOCUMENTO_PATTERN =
@@ -97,8 +106,10 @@ export const PERIZIA_SOGGETTO_PATTERN =
   /(?:Paziente|CTU|C\.T\.U\.|CTP|C\.T\.P\.|Perito|Esaminato|Esaminata)[:\s]+([A-Z][A-Za-zÀ-ÿ']+(?:\s+[A-Z][A-Za-zÀ-ÿ']+){1,3})/gi
 
 /** Titolo professionale + nome (min 2 token). */
-export const TITOLO_NOME_PATTERN =
-  /(?:Ing\.|Dott\.(?:ssa)?|Dr\.(?:ssa)?|Prof\.(?:ssa)?|Sig\.(?:ra)?|Avv\.|Arch\.|Geom\.)\s+([A-ZÀ-Ü][A-Za-zÀ-ÿ']+(?:\s+[A-ZÀ-Ü][A-Za-zÀ-ÿ']+){1,3})/g
+export const TITOLO_NOME_PATTERN = new RegExp(
+  String.raw`(?:[Ii]ng\.|[Dd]ott\.(?:ssa)?|[Dd]r\.(?:ssa)?|[Pp]rof\.(?:ssa)?|[Ss]ig\.(?:ra)?|[Aa]vv\.|[Aa]rch\.|[Gg]eom\.)\s+(${UNICODE_NAME_TOKEN}(?:${NAME_INLINE_SEP}${UNICODE_NAME_TOKEN}){1,3})`,
+  'gu'
+)
 
 /** Elenco avvocati separati da virgola. */
 export const AVV_LISTA_PATTERN =
@@ -108,6 +119,12 @@ export const AVV_LISTA_PATTERN =
 export const PKI_FIRMA_PATTERN = new RegExp(
   String.raw`Firmato\s+Da:\s+(${UNICODE_NAME_TOKEN}(?:${NAME_INLINE_SEP}${UNICODE_NAME_TOKEN}){1,3})\s+Emesso`,
   'giu'
+)
+
+/** Società/compagnie con suffisso formale (S.p.A., S.r.l.) visibili nel canale MCP. */
+export const ORGANIZZAZIONE_SOCIETA_PATTERN = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])((?:${ORG_NAME_TOKEN}${NAME_INLINE_SEP}){1,8}${COMPANY_SUFFIX})`,
+  'gu'
 )
 
 // ─── Estensioni AnonyMCP: entità contestuali legali (anti re-identificazione) ─
@@ -145,6 +162,7 @@ export const STRUCTURED_LEGAL_PATTERNS: { pattern: RegExp; type: EntityType }[] 
   { pattern: PERIZIA_SOGGETTO_PATTERN, type: 'PERSONA' },
   { pattern: TITOLO_NOME_PATTERN, type: 'PERSONA' },
   { pattern: PKI_FIRMA_PATTERN, type: 'PERSONA' },
+  { pattern: ORGANIZZAZIONE_SOCIETA_PATTERN, type: 'ORGANIZZAZIONE' },
   { pattern: TARGA_PATTERN, type: 'TARGA' },
   { pattern: NUMERO_RUOLO_PATTERN, type: 'NUMERO_RUOLO' }
 ]

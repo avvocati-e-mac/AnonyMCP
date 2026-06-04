@@ -65,6 +65,8 @@ export function sanitizeMarkdown(raw: string): string {
   let s = raw.normalize('NFKC')
   s = decodeHtmlEntities(s)
   s = s.replace(ZERO_WIDTH, '')
+  // OCR comune nei PDF scansionati: una pipe tra lettere e' spesso una "l".
+  s = s.replace(/(?<=[\p{L}])\|(?=[\p{L}])/gu, 'l')
   // 0b. Hyphenation a fine riga: "Ma-\nrio" → "Mario" (sillabazione tipografica).
   s = s.replace(/([A-Za-zÀ-ÿ])-\n([a-zà-ÿ])/g, '$1$2')
 
