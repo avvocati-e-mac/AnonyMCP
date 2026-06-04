@@ -6,11 +6,15 @@ import {
   CheckCircle2,
   CircleStop,
   Cloud,
+  CloudOff,
+  FileScan,
   FolderPlus,
+  Inbox,
+  LayoutDashboard,
   ListChecks,
   Loader2,
   Lock,
-  Play,
+  NotebookText,
   Plus,
   RefreshCw,
   Settings,
@@ -32,7 +36,15 @@ import type {
 const ONBOARDING_KEY = 'anonymcp:onboarding-dismissed'
 
 type Screen = 'onboarding' | 'setup' | 'dashboard'
+type MainPage = 'dashboard' | 'review' | 'blocked' | 'drafts' | 'scan'
 type ScanMode = 'single' | 'all' | 'auto'
+
+interface NavigationCounts {
+  review: number
+  blocked: number
+  drafts: number
+  scanActive: boolean
+}
 
 interface RefreshOptions {
   showLoading?: boolean
@@ -260,12 +272,66 @@ function useAppModel(): AppModel {
   }
 }
 
-function AppHeader({ onShowPrivacy, onRefresh }: {
+const NAV_ITEMS: {
+  id: MainPage
+  label: string
+  accessibleLabel: string
+  icon: ReactNode
+  badgeKey?: 'review' | 'blocked' | 'drafts'
+}[] = [
+  {
+    id: 'dashboard',
+    label: 'Dashboard',
+    accessibleLabel: 'Dashboard, situazione MCP e prossime azioni',
+    icon: <LayoutDashboard size={16} />
+  },
+  {
+    id: 'review',
+    label: 'Review',
+    accessibleLabel: 'Review umana locale',
+    icon: <Inbox size={16} />,
+    badgeKey: 'review'
+  },
+  {
+    id: 'blocked',
+    label: 'Bloccati',
+    accessibleLabel: 'Bloccati MCP/LLM',
+    icon: <CloudOff size={16} />,
+    badgeKey: 'blocked'
+  },
+  {
+    id: 'drafts',
+    label: 'Bozze',
+    accessibleLabel: 'Bozze locali da confermare',
+    icon: <NotebookText size={16} />,
+    badgeKey: 'drafts'
+  },
+  {
+    id: 'scan',
+    label: 'Scansione',
+    accessibleLabel: 'Scansione locale delle pratiche',
+    icon: <FileScan size={16} />
+  }
+]
+
+function navButtonLabel(item: (typeof NAV_ITEMS)[number], counts: NavigationCounts | null): string {
+  if (!counts) return item.accessibleLabel
+  if (item.id === 'review') return `${item.accessibleLabel}, ${counts.review === 1 ? '1 documento da rivedere' : `${counts.review} documenti da rivedere`}`
+  if (item.id === 'blocked') return `${item.accessibleLabel}, ${counts.blocked === 1 ? '1 documento bloccato MCP/LLM' : `${counts.blocked} documenti bloccati MCP/LLM`}`
+  if (item.id === 'drafts') return `${item.accessibleLabel}, ${counts.drafts === 1 ? '1 bozza locale da confermare' : `${counts.drafts} bozze locali da confermare`}`
+  if (item.id === 'scan') return counts.scanActive ? `${item.accessibleLabel}, scansione locale in corso` : item.accessibleLabel
+  return item.accessibleLabel
+}
+
+function AppHeader({ page, counts, onPageChange, onShowPrivacy, onRefresh }: {
+  page?: MainPage
+  counts?: NavigationCounts | null
+  onPageChange?: (page: MainPage) => void
   onShowPrivacy: () => void
   onRefresh: () => void
 }): React.JSX.Element {
   return (
-    <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 bg-white px-6 py-3">
       <div className="flex items-center gap-2">
         <ShieldCheck className="text-blue-600" size={24} />
         <div>
@@ -273,6 +339,43 @@ function AppHeader({ onShowPrivacy, onRefresh }: {
           <div className="text-xs text-slate-500">Filtro locale per LLM cloud</div>
         </div>
       </div>
+      {page && onPageChange ? (
+        <nav aria-label="Sezioni operative locali" className="order-last flex w-full flex-wrap items-center justify-center gap-2 xl:order-none xl:w-auto xl:flex-1">
+          {NAV_ITEMS.map((item) => {
+            const active = page === item.id
+            const badgeValue = item.badgeKey && counts ? counts[item.badgeKey] : 0
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onPageChange(item.id)}
+                aria-current={active ? 'page' : undefined}
+                aria-label={navButtonLabel(item, counts ?? null)}
+                title={navButtonLabel(item, counts ?? null)}
+                className={[
+                  'inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600',
+                  active
+                    ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50'
+                ].join(' ')}
+              >
+                <span aria-hidden="true">{item.icon}</span>
+                <span>{item.label}</span>
+                {badgeValue ? (
+                  <span className="rounded-full bg-white/85 px-1.5 py-0.5 text-[11px] leading-none text-slate-800 ring-1 ring-current/20">
+                    {badgeValue}
+                  </span>
+                ) : null}
+                {item.id === 'scan' && counts?.scanActive ? (
+                  <span className="rounded-full bg-white/85 px-1.5 py-0.5 text-[11px] leading-none text-blue-800 ring-1 ring-current/20">
+                    in corso
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </nav>
+      ) : null}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -637,14 +740,14 @@ function ExposureZonesPanel({ dashboard, status }: { dashboard: DashboardSummary
     {
       title: 'Bozze locali',
       value: `${totals?.pendingWrites ?? 0}`,
-      body: 'Bozze LLM re-idratate da confermare nella pratica locale.',
+      body: 'Generate sui pseudonimi, poi completate localmente con i dati reali. Da controllare prima del salvataggio.',
       tone: 'local',
       icon: <FolderPlus size={18} />
     }
   ]
 
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
       {zones.map((zone) => (
         <div key={zone.title} className={`rounded-lg border p-4 ${statusPillClass(zone.tone)}`}>
           <div className="flex items-center justify-between gap-3">
@@ -663,14 +766,6 @@ function ExposureZonesPanel({ dashboard, status }: { dashboard: DashboardSummary
 
 type ActivityFilter = 'all' | 'review' | 'sensitive' | 'writes' | 'approved'
 
-const ACTIVITY_FILTERS: { id: ActivityFilter; label: string }[] = [
-  { id: 'all', label: 'Tutti' },
-  { id: 'review', label: 'Da rivedere' },
-  { id: 'sensitive', label: 'Sensibili' },
-  { id: 'writes', label: 'Bozze' },
-  { id: 'approved', label: 'Approvati localmente' }
-]
-
 interface ActivityRow {
   kind: 'document' | 'write'
   key: string
@@ -686,6 +781,83 @@ interface ActivityRow {
   isSensitive: boolean
   isApproved: boolean
   action: string
+}
+
+function buildActivityRows(
+  reviewDocs: ReviewDocumentListItem[],
+  sensitiveDocs: CloudBlockedSensitiveDocument[],
+  pendingWrites: PendingWriteItem[]
+): ActivityRow[] {
+  const rows: ActivityRow[] = reviewDocs.map((doc) => ({
+    kind: 'document' as const,
+    key: `doc-${doc.folderId}-${doc.docId}`,
+    folderId: doc.folderId,
+    docId: doc.docId,
+    label: doc.label,
+    document: doc.fileName,
+    review: statusLabel(doc.status),
+    sensitivity: sensitivityLabel(doc),
+    cloud: mcpExposureLabel(doc),
+    isReview: doc.status !== 'approved',
+    isSensitive: doc.sensitive || doc.sensitiveSuggested || doc.sensitivityOverride === 'sensitive',
+    isApproved: doc.status === 'approved',
+    action: doc.sensitive || doc.sensitiveSuggested ? 'Valuta' : 'Apri'
+  }))
+  const knownDocs = new Set(rows.map((row) => `${row.folderId}-${row.docId}`))
+  for (const doc of sensitiveDocs) {
+    if (knownDocs.has(`${doc.folderId}-${doc.docId}`)) continue
+    rows.push({
+      kind: 'document',
+      key: `sensitive-${doc.folderId}-${doc.docId}`,
+      folderId: doc.folderId,
+      docId: doc.docId,
+      label: doc.label,
+      document: doc.fileName,
+      review: statusLabel(doc.status),
+      sensitivity: sensitivityLabel(doc),
+      cloud: 'Bloccato MCP/LLM',
+      isReview: doc.status !== 'approved',
+      isSensitive: true,
+      isApproved: doc.status === 'approved',
+      action: 'Valuta'
+    })
+  }
+  for (const write of pendingWrites) {
+    rows.push({
+      kind: 'write',
+      key: `write-${write.folderId}-${write.relPath}`,
+      folderId: write.folderId,
+      relPath: write.relPath,
+      label: write.label,
+      document: write.fileName,
+      review: 'Bozza LLM',
+      sensitivity: 'Da confermare',
+      cloud: 'Locale reale',
+      isReview: false,
+      isSensitive: false,
+      isApproved: false,
+      action: 'Conferma bozza'
+    })
+  }
+  return rows
+}
+
+function filterActivityRows(rows: ActivityRow[], search: string): ActivityRow[] {
+  const needle = search.trim().toLowerCase()
+  if (!needle) return rows
+  return rows.filter((row) => [row.label, row.document, row.review, row.sensitivity, row.cloud]
+    .join(' ')
+    .toLowerCase()
+    .includes(needle))
+}
+
+function navigationCounts(dashboard: DashboardSummary | null, scanProgress: ScanProgress | null): NavigationCounts {
+  return {
+    review: dashboard?.totals.reviewRequired ?? 0,
+    blocked: dashboard?.totals.cloudBlockedSensitiveDocs ?? 0,
+    drafts: dashboard?.totals.pendingWrites ?? 0,
+    scanActive: scanProgress !== null
+  }
 }
 
 type PracticeSummary = DashboardSummary['practices'][number]
@@ -731,6 +903,263 @@ function activityReviewBadgeClass(row: ActivityRow): string {
   if (row.kind === 'write') return ACTIVITY_FILTER_CLASSES.writes.badge
   if (row.isApproved) return ACTIVITY_FILTER_CLASSES.approved.badge
   return ACTIVITY_FILTER_CLASSES.review.badge
+}
+
+function ActivityTable({
+  title,
+  body,
+  rows,
+  search,
+  searchLabel,
+  emptyMessage,
+  onSearchChange,
+  onOpenReview,
+  onOpenWrite
+}: {
+  title: string
+  body: string
+  rows: ActivityRow[]
+  search: string
+  searchLabel: string
+  emptyMessage: string
+  onSearchChange: (value: string) => void
+  onOpenReview: (folderId: string, docId: string) => void
+  onOpenWrite: (folderId: string, relPath: string) => void
+}): React.JSX.Element {
+  const filteredRows = useMemo(() => filterActivityRows(rows, search), [rows, search])
+  const visibleRows = useMemo(() => filteredRows.slice(0, 30), [filteredRows])
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div>
+          <h2 className="font-medium text-slate-900">{title}</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{body}</p>
+        </div>
+        <input
+          aria-label={searchLabel}
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Cerca documento o pratica"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:w-64"
+        />
+      </div>
+      <div>
+        <div className="hidden grid-cols-[5rem_minmax(14rem,1.7fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_5.5rem] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-medium uppercase text-slate-500 lg:grid">
+          <div>Pratica</div>
+          <div>Documento</div>
+          <div>Review</div>
+          <div>Sensibilita'</div>
+          <div>MCP/LLM</div>
+          <div className="text-right">Azione</div>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {visibleRows.length ? (
+            visibleRows.map((row) => (
+              <div
+                key={row.key}
+                className="grid gap-3 px-5 py-4 text-sm lg:grid-cols-[5rem_minmax(14rem,1.7fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_5.5rem] lg:items-start"
+              >
+                <div>
+                  <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Pratica</div>
+                  <div className="font-medium text-slate-900">{row.label}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Documento</div>
+                  <div className="break-words leading-5 text-slate-800" title={row.document}>{row.document}</div>
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Review</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className={`rounded-full border px-2 py-1 text-xs font-medium ${activityReviewBadgeClass(row)}`}>
+                      {row.review}
+                    </span>
+                    {row.isSensitive ? (
+                      <span className={`rounded-full border px-2 py-1 text-xs font-medium ${ACTIVITY_FILTER_CLASSES.sensitive.badge}`}>
+                        Sensibile
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Sensibilita'</div>
+                  <span className={[
+                    'inline-flex max-w-full whitespace-normal rounded-full px-2 py-1 text-xs leading-4',
+                    row.isSensitive ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'
+                  ].join(' ')}>
+                    {row.sensitivity}
+                  </span>
+                </div>
+                <div>
+                  <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">MCP/LLM</div>
+                  <span className={`inline-flex max-w-full whitespace-normal rounded-full border px-2 py-1 text-xs leading-4 ${statusPillClass(row.kind === 'write' ? 'local' : mcpExposureTone(row.cloud))}`}>
+                    {row.cloud}
+                  </span>
+                </div>
+                <div className="flex lg:justify-end">
+                  <button
+                    type="button"
+                    aria-label={`${row.action} ${row.document} nella pratica ${row.label}`}
+                    onClick={() => {
+                      if (row.kind === 'write' && row.relPath) onOpenWrite(row.folderId, row.relPath)
+                      else if (row.docId) onOpenReview(row.folderId, row.docId)
+                    }}
+                    className="inline-flex min-w-20 justify-center rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                  >
+                    {row.action}
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="px-5 py-8 text-sm text-slate-500">
+              {search.trim() ? 'Nessun risultato per la ricerca inserita.' : emptyMessage}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+        Mostrate {visibleRows.length} di {filteredRows.length} risultati filtrati ({rows.length} totali in questa pagina).
+      </div>
+    </section>
+  )
+}
+
+function DashboardOverviewPage({
+  status,
+  dashboard,
+  counts,
+  onPageChange
+}: {
+  status: AppStatus
+  dashboard: DashboardSummary | null
+  counts: NavigationCounts
+  onPageChange: (page: MainPage) => void
+}): React.JSX.Element {
+  const actions: {
+    page: MainPage
+    title: string
+    value?: number
+    body: string
+    action: string
+    tone: StatusTone
+    icon: ReactNode
+    badgeClass?: string
+  }[] = [
+    {
+      page: 'review',
+      title: 'Review umana',
+      value: counts.review,
+      body: 'Documenti da controllare localmente prima di qualunque esposizione MCP/LLM.',
+      action: 'Apri Review',
+      tone: 'warning',
+      icon: <Inbox size={18} />,
+      badgeClass: 'bg-amber-100 text-amber-900 ring-1 ring-amber-300'
+    },
+    {
+      page: 'blocked',
+      title: 'Bloccati MCP/LLM',
+      value: counts.blocked,
+      body: 'Documenti sensibili o non consentiti al canale LLM cloud. Restano nella UI locale.',
+      action: 'Apri Bloccati',
+      tone: 'danger',
+      icon: <CloudOff size={18} />,
+      badgeClass: 'bg-red-100 text-red-900 ring-1 ring-red-300'
+    },
+    {
+      page: 'drafts',
+      title: 'Bozze LLM da confermare',
+      value: counts.drafts,
+      body: 'Generate sui pseudonimi, poi completate localmente con i dati reali. Controllale prima di salvarle nella pratica.',
+      action: 'Apri Bozze',
+      tone: 'local',
+      icon: <NotebookText size={18} />,
+      badgeClass: 'bg-slate-200 text-slate-900 ring-1 ring-slate-300'
+    },
+    {
+      page: 'scan',
+      title: 'Scansione locale',
+      body: 'Cerca nuovi documenti nelle pratiche senza esporre nulla via MCP/LLM.',
+      action: 'Apri Scansione',
+      tone: 'info',
+      icon: <FileScan size={18} />
+    }
+  ]
+
+  return (
+    <>
+      <section className="rounded-lg border border-slate-200 bg-white p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900">Dashboard generale</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Situazione attuale dell'MCP locale e prossime azioni: locale reale, review, pseudonimizzato e canale MCP/LLM restano distinti.
+            </p>
+            <div className="mt-4 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
+              <div>
+                <span className="font-medium text-slate-700">Config UI</span>
+                <div className="mt-1 truncate">{compactPath(status.configPath)}</div>
+              </div>
+              <div>
+                <span className="font-medium text-slate-700">Hash config</span>
+                <div className="mt-1">{status.configHash ?? 'non disponibile'}</div>
+              </div>
+              <div>
+                <span className="font-medium text-slate-700">Folder MCP locali</span>
+                <div className="mt-1 truncate">{status.folderIds?.length ? status.folderIds.join(', ') : 'nessuno'}</div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Verifica il client LLM dopo ogni modifica: la UI puo' usare una config diversa dal server MCP gia' collegato.
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
+            <CheckCircle2 size={15} />
+            Config UI pronta
+          </span>
+        </div>
+      </section>
+
+      <ExposureZonesPanel dashboard={dashboard} status={status} />
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-medium text-slate-900">Cosa devo fare adesso?</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              I badge indicano lavoro locale o spiegazioni da controllare. Non significano pubblicazione al cloud.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {actions.map((action) => (
+            <button
+              key={action.page}
+              type="button"
+              onClick={() => onPageChange(action.page)}
+              className={`relative flex min-h-full flex-col rounded-lg border p-4 text-left transition hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${typeof action.value === 'number' && action.value > 0 ? 'pr-16' : ''} ${statusPillClass(action.tone)}`}
+            >
+              {typeof action.value === 'number' && action.value > 0 ? (
+                <span className={`absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full text-lg font-semibold shadow-sm ${action.badgeClass ?? 'bg-slate-700 text-white'}`}>
+                  {action.value}
+                </span>
+              ) : null}
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                {action.icon}
+                {action.title}
+              </span>
+              <span className="mt-3 block text-xs leading-5">{action.body}</span>
+              <span className="mt-auto flex justify-center pt-4">
+                <span className="inline-flex min-h-9 items-center justify-center rounded-md border border-current/30 bg-white/70 px-3 py-1.5 text-xs font-semibold text-current shadow-sm">
+                  {action.action}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </>
+  )
 }
 
 const ENTITY_TYPES: ReviewDocumentDetail['entities'][number]['type'][] = [
@@ -981,7 +1410,7 @@ function SensitivityDecisionPanel({
 function PendingWriteProvenance({ detail }: { detail: PendingWriteDetail }): React.JSX.Element {
   const steps = [
     { title: 'LLM', body: 'Ha scritto usando pseudonimi.' },
-    { title: 'AnonyMCP locale', body: 'Re-idrata sul computer.' },
+    { title: 'AnonyMCP locale', body: 'Completa con dati reali solo sul computer.' },
     { title: 'Cartella pratica', body: 'Salva solo dopo conferma.' }
   ]
 
@@ -1223,7 +1652,7 @@ function ReviewDetailPanel({
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
         >
           <ArrowLeft size={16} />
-          Torna alla dashboard
+          Torna senza approvare
         </button>
       </div>
 
@@ -1336,7 +1765,7 @@ function PendingWritePanel({
     <section className="rounded-lg border border-slate-200 bg-white">
       <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
         <div className="min-w-0">
-          <h2 className="truncate font-medium text-slate-900">Bozza re-idratata locale: {detail.fileName}</h2>
+          <h2 className="truncate font-medium text-slate-900">Bozza LLM da confermare: {detail.fileName}</h2>
           <div className="mt-1 text-sm text-slate-500">Pratica {detail.label} - bozza in attesa di conferma</div>
         </div>
         <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
@@ -1347,10 +1776,10 @@ function PendingWritePanel({
         <PendingWriteProvenance detail={detail} />
         <PendingWritePreflight detail={detail} />
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <div className="font-medium">Bozza re-idratata locale</div>
+          <div className="font-medium">Bozza LLM da confermare</div>
           <p className="mt-1">
-            Il testo qui sotto puo contenere dati reali reinseriti da AnonyMCP su questo computer.
-            Il LLM ha lavorato sui pseudonimi: controlla la bozza prima di salvarla nella pratica.
+            Generate sui pseudonimi, poi completate localmente con i dati reali.
+            Controllale prima di salvarle nella pratica.
           </p>
         </div>
         {!detail.hashMatches ? (
@@ -1377,6 +1806,7 @@ function PendingWritePanel({
 }
 
 function Dashboard({
+  page,
   status,
   dashboard,
   reviewDocs,
@@ -1388,8 +1818,10 @@ function Dashboard({
   onScan,
   onScanAll,
   onCancelScan,
-  onRefresh
+  onRefresh,
+  onPageChange
 }: {
+  page: MainPage
   status: AppStatus
   dashboard: DashboardSummary | null
   reviewDocs: ReviewDocumentListItem[]
@@ -1402,6 +1834,7 @@ function Dashboard({
   onScanAll: () => void
   onCancelScan: () => void
   onRefresh: () => Promise<void>
+  onPageChange: (page: MainPage) => void
 }): React.JSX.Element {
   const [activeRef, setActiveRef] = useState<{ folderId: string; docId: string } | null>(null)
   const [detail, setDetail] = useState<ReviewDocumentDetail | null>(null)
@@ -1411,12 +1844,11 @@ function Dashboard({
   const [manualType, setManualType] = useState<ReviewDocumentDetail['entities'][number]['type']>('PERSONA')
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
   const [activitySearch, setActivitySearch] = useState('')
   const [showAllPractices, setShowAllPractices] = useState(false)
-  const totals = dashboard?.totals
   const practices = dashboard?.practices ?? []
   const practiceCount = practices.length
+  const counts = navigationCounts(dashboard, scanProgress)
   const alreadyManagedPractices = useMemo(() => practices.filter(isPracticeAlreadyManaged), [practices])
   const hiddenManagedCount = alreadyManagedPractices.length
   const visiblePractices = useMemo(
@@ -1424,82 +1856,17 @@ function Dashboard({
     [practices, showAllPractices]
   )
   const scanBusy = scanProgress !== null
-  const activityRows = useMemo(() => {
-    const rows: ActivityRow[] = reviewDocs.map((doc) => ({
-      kind: 'document' as const,
-      key: `doc-${doc.folderId}-${doc.docId}`,
-      folderId: doc.folderId,
-      docId: doc.docId,
-      label: doc.label,
-      document: doc.fileName,
-      review: statusLabel(doc.status),
-      sensitivity: sensitivityLabel(doc),
-      cloud: mcpExposureLabel(doc),
-      isReview: doc.status !== 'approved',
-      isSensitive: doc.sensitive || doc.sensitiveSuggested || doc.sensitivityOverride === 'sensitive',
-      isApproved: doc.status === 'approved',
-      action: doc.sensitive || doc.sensitiveSuggested ? 'Valuta' : 'Apri'
-    }))
-    const knownDocs = new Set(rows.map((row) => `${row.folderId}-${row.docId}`))
-    for (const doc of sensitiveDocs) {
-      if (knownDocs.has(`${doc.folderId}-${doc.docId}`)) continue
-      rows.push({
-        kind: 'document',
-        key: `sensitive-${doc.folderId}-${doc.docId}`,
-        folderId: doc.folderId,
-        docId: doc.docId,
-        label: doc.label,
-        document: doc.fileName,
-        review: statusLabel(doc.status),
-        sensitivity: sensitivityLabel(doc),
-        cloud: 'Bloccato MCP/LLM',
-        isReview: doc.status !== 'approved',
-        isSensitive: true,
-        isApproved: doc.status === 'approved',
-        action: 'Valuta'
-      })
-    }
-    for (const write of pendingWrites) {
-      rows.push({
-        kind: 'write',
-        key: `write-${write.folderId}-${write.relPath}`,
-        folderId: write.folderId,
-        relPath: write.relPath,
-        label: write.label,
-        document: write.fileName,
-        review: 'Bozza LLM',
-        sensitivity: 'Da confermare',
-        cloud: 'Locale reale',
-        isReview: false,
-        isSensitive: false,
-        isApproved: false,
-        action: 'Conferma bozza'
-      })
-    }
-    return rows
-  }, [pendingWrites, reviewDocs, sensitiveDocs])
-  const filteredActivityRows = useMemo(() => {
-    const needle = activitySearch.trim().toLowerCase()
-    return activityRows.filter((row) => {
-        if (activityFilter === 'review' && !row.isReview) return false
-        if (activityFilter === 'sensitive' && !row.isSensitive) return false
-        if (activityFilter === 'writes' && row.kind !== 'write') return false
-        if (activityFilter === 'approved' && !row.isApproved) return false
-        if (!needle) return true
-        return [row.label, row.document, row.review, row.sensitivity, row.cloud]
-          .join(' ')
-          .toLowerCase()
-          .includes(needle)
-      })
-  }, [activityFilter, activityRows, activitySearch])
-  const visibleActivityRows = useMemo(() => filteredActivityRows.slice(0, 30), [filteredActivityRows])
-  const activityFilterCounts = useMemo(() => ({
-    all: activityRows.length,
-    review: activityRows.filter((row) => row.isReview).length,
-    sensitive: activityRows.filter((row) => row.isSensitive).length,
-    writes: activityRows.filter((row) => row.kind === 'write').length,
-    approved: activityRows.filter((row) => row.isApproved).length
-  }), [activityRows])
+  const activityRows = useMemo(() => buildActivityRows(reviewDocs, sensitiveDocs, pendingWrites), [pendingWrites, reviewDocs, sensitiveDocs])
+  const reviewRows = useMemo(() => activityRows.filter((row) => row.kind === 'document' && row.isReview), [activityRows])
+  const blockedRows = useMemo(() => activityRows.filter((row) => row.kind === 'document' && row.cloud === 'Bloccato MCP/LLM'), [activityRows])
+  const draftRows = useMemo(() => activityRows.filter((row) => row.kind === 'write'), [activityRows])
+
+  useEffect(() => {
+    setActiveRef(null)
+    setDetail(null)
+    setWriteDetail(null)
+    setActionError(null)
+  }, [page])
 
   async function openReviewDocument(folderId: string, docId: string): Promise<void> {
     setActionBusy(true)
@@ -1630,6 +1997,180 @@ function Dashboard({
     }
   }
 
+  function renderScanPage(): React.JSX.Element {
+    return (
+      <section className="rounded-lg border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <h1 className="font-medium text-slate-900">Scansione locale</h1>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Cerca nuovi documenti nelle pratiche. La scansione legge le cartelle e prepara documenti per review, senza esporre nulla via MCP/LLM.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="text-sm text-slate-500">{visiblePractices.length} visibili / {practiceCount} configurate</span>
+            <button
+              type="button"
+              aria-pressed={showAllPractices}
+              onClick={() => setShowAllPractices((current) => !current)}
+              disabled={practiceCount === 0}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showAllPractices ? 'Nascondi gia\' gestite' : `Mostra tutte${hiddenManagedCount ? ` (${hiddenManagedCount} gia' gestite)` : ''}`}
+            </button>
+            <button
+              type="button"
+              aria-label="Cerca nuovi documenti in tutte le pratiche configurate localmente"
+              onClick={onScanAll}
+              disabled={scanBusy || practiceCount === 0}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {scanProgress?.mode === 'all' || scanProgress?.mode === 'auto' ? <Loader2 className="animate-spin" size={16} /> : <FileScan size={16} />}
+              {scanProgress?.mode === 'all' || scanProgress?.mode === 'auto' ? 'Scansione...' : 'Cerca nuovi documenti nelle pratiche'}
+            </button>
+          </div>
+        </div>
+
+        {scanProgress ? (
+          <div role="status" aria-live="polite" className="border-b border-blue-100 bg-blue-50 px-5 py-3 text-sm text-blue-900">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                {scanProgress.mode === 'auto'
+                  ? `Scansione iniziale locale ${scanProgress.currentIndex} di ${scanProgress.total}: pratica ${scanProgress.currentFolderId}. Cerco nuovi documenti da autorizzare.`
+                  : scanProgress.mode === 'all'
+                    ? `Scansione locale ${scanProgress.currentIndex} di ${scanProgress.total}: pratica ${scanProgress.currentFolderId}. I conteggi si aggiornano al termine.`
+                  : `Scansione locale pratica ${scanProgress.currentFolderId}.`}
+                {scanProgress.cancelRequested ? ' Stop richiesto: mi fermo dopo la pratica corrente.' : ''}
+              </span>
+              {scanProgress.mode !== 'single' && !scanProgress.cancelRequested ? (
+                <button
+                  type="button"
+                  onClick={onCancelScan}
+                  className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-100"
+                >
+                  Ferma dopo questa pratica
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {scanSummary ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className={[
+              'border-b px-5 py-3 text-sm',
+              scanSummary.tone === 'success' ? 'border-green-100 bg-green-50 text-green-800' : '',
+              scanSummary.tone === 'warning' ? 'border-amber-100 bg-amber-50 text-amber-900' : '',
+              scanSummary.tone === 'danger' ? 'border-red-100 bg-red-50 text-red-800' : ''
+            ].join(' ')}
+          >
+            <div>{scanSummary.message}</div>
+            {scanSummary.issues?.length ? (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                {scanSummary.issues.slice(0, 6).map((issue) => <li key={issue}>{issue}</li>)}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="max-h-[34rem] overflow-auto p-4">
+          {practiceCount === 0 ? (
+            <div className="px-1 py-8 text-sm text-slate-500">Nessuna pratica caricata.</div>
+          ) : visiblePractices.length ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {visiblePractices.map((practice) => {
+                const currentScan = scanningFolder === practice.folderId
+                return (
+                  <article key={practice.folderId} className="flex min-h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-slate-900">{practice.label}</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{practice.folderId}</span>
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{practice.matter}</span>
+                      </div>
+                      <div className="mt-2 truncate text-sm text-slate-500" title={practice.path}>Path locale: {compactPath(practice.path)}</div>
+                      <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
+                        <span className="inline-flex rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-amber-800">{practice.reviewRequired} da rivedere</span>
+                        <span className="inline-flex rounded-md border border-green-100 bg-green-50 px-2 py-1 text-green-800">{practice.approved} approvati</span>
+                        <span className="inline-flex rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-blue-800">{practice.exposed} via MCP/LLM</span>
+                        <span className="inline-flex rounded-md border border-red-100 bg-red-50 px-2 py-1 text-red-800">{practice.cloudBlockedSensitiveDocs} bloccati</span>
+                        {practice.pendingWrites ? (
+                          <span className="inline-flex rounded-md border border-violet-100 bg-violet-50 px-2 py-1 text-violet-800">{practice.pendingWrites} bozze</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={currentScan ? `Scansione in corso per pratica ${practice.folderId}` : `Cerca nuovi documenti nella pratica ${practice.folderId}`}
+                      onClick={() => onScan(practice.folderId)}
+                      disabled={scanBusy}
+                      className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                    >
+                      {currentScan ? <Loader2 className="animate-spin" size={16} /> : <FileScan size={16} />}
+                      {currentScan ? 'Scansione...' : 'Cerca nuovi documenti'}
+                    </button>
+                  </article>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-600">
+              Nessuna pratica richiede attenzione. Usa "Mostra tutte" per vedere anche quelle gia' gestite.
+            </div>
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  function renderActivityPage(): React.JSX.Element {
+    if (page === 'review') {
+      return (
+        <ActivityTable
+          title="Review"
+          body="Coda locale dei documenti da controllare prima di qualunque esposizione MCP/LLM. L'approvazione resta una decisione professionale locale."
+          rows={reviewRows}
+          search={activitySearch}
+          searchLabel="Cerca documento o pratica nella Review"
+          emptyMessage="Nessun documento richiede review locale."
+          onSearchChange={setActivitySearch}
+          onOpenReview={(folderId, docId) => void openReviewDocument(folderId, docId)}
+          onOpenWrite={(folderId, relPath) => void openPendingWrite(folderId, relPath)}
+        />
+      )
+    }
+    if (page === 'blocked') {
+      return (
+        <ActivityTable
+          title="Bloccati MCP/LLM"
+          body="Documenti approvati o da valutare che restano bloccati al canale MCP/LLM per sensibilita' o policy. Restano nella UI locale."
+          rows={blockedRows}
+          search={activitySearch}
+          searchLabel="Cerca documento o pratica tra i bloccati MCP/LLM"
+          emptyMessage="Nessun documento risulta bloccato per MCP/LLM."
+          onSearchChange={setActivitySearch}
+          onOpenReview={(folderId, docId) => void openReviewDocument(folderId, docId)}
+          onOpenWrite={(folderId, relPath) => void openPendingWrite(folderId, relPath)}
+        />
+      )
+    }
+    return (
+      <ActivityTable
+        title="Bozze LLM da confermare"
+        body="Generate sui pseudonimi, poi completate localmente con i dati reali. Controllale prima di salvarle nella pratica."
+        rows={draftRows}
+        search={activitySearch}
+        searchLabel="Cerca documento o pratica tra le bozze LLM da confermare"
+        emptyMessage="Nessuna bozza LLM e' in attesa di conferma."
+        onSearchChange={setActivitySearch}
+        onOpenReview={(folderId, docId) => void openReviewDocument(folderId, docId)}
+        onOpenWrite={(folderId, relPath) => void openPendingWrite(folderId, relPath)}
+      />
+    )
+  }
+
   if (detail) {
     return (
       <main className="flex-1 bg-slate-50 p-6">
@@ -1658,170 +2199,10 @@ function Dashboard({
     )
   }
 
-  return (
-    <main className="flex-1 bg-slate-50 p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <section className="rounded-lg border border-slate-200 bg-white p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-lg font-semibold text-slate-900">Dashboard generale</h1>
-              <p className="mt-1 text-sm text-slate-600">
-                Controlla cosa resta locale, cosa richiede review e cosa puo diventare disponibile via MCP/LLM.
-              </p>
-              <div className="mt-4 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
-                <div>
-                  <span className="font-medium text-slate-700">Config UI</span>
-                  <div className="mt-1 truncate">{compactPath(status.configPath)}</div>
-                </div>
-                <div>
-                  <span className="font-medium text-slate-700">Hash config</span>
-                  <div className="mt-1">{status.configHash ?? 'non disponibile'}</div>
-                </div>
-                <div>
-                  <span className="font-medium text-slate-700">Folder MCP locali</span>
-                  <div className="mt-1 truncate">{status.folderIds?.length ? status.folderIds.join(', ') : 'nessuno'}</div>
-                </div>
-              </div>
-              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Verifica il client LLM dopo ogni modifica: la UI puo' usare una config diversa dal server MCP gia' collegato.
-              </div>
-            </div>
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-3 py-1 text-sm text-green-700">
-              <CheckCircle2 size={15} />
-              MCP configurato
-            </span>
-          </div>
-        </section>
-
-        <ExposureZonesPanel dashboard={dashboard} status={status} />
-
-        <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
-            <div>
-              <h2 className="font-medium text-slate-900">Pratiche</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                Mostro prima le pratiche da gestire. Scansione locale: legge le cartelle e prepara documenti per review, senza esporre nulla via MCP/LLM.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <span className="text-sm text-slate-500">{visiblePractices.length} visibili / {practiceCount} configurate</span>
-              <button
-                type="button"
-                aria-pressed={showAllPractices}
-                onClick={() => setShowAllPractices((current) => !current)}
-                disabled={practiceCount === 0}
-                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {showAllPractices ? 'Nascondi gia\' gestite' : `Mostra tutte${hiddenManagedCount ? ` (${hiddenManagedCount} gia' gestite)` : ''}`}
-              </button>
-              <button
-                type="button"
-                aria-label="Scansiona tutte le pratiche configurate localmente"
-                onClick={onScanAll}
-                disabled={scanBusy || practiceCount === 0}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
-                {scanProgress?.mode === 'all' || scanProgress?.mode === 'auto' ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
-                {scanProgress?.mode === 'all' || scanProgress?.mode === 'auto' ? 'Scansione...' : 'Scansiona tutto'}
-              </button>
-            </div>
-          </div>
-
-          {scanProgress ? (
-            <div role="status" aria-live="polite" className="border-b border-blue-100 bg-blue-50 px-5 py-3 text-sm text-blue-900">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span>
-                  {scanProgress.mode === 'auto'
-                    ? `Scansione iniziale locale ${scanProgress.currentIndex} di ${scanProgress.total}: pratica ${scanProgress.currentFolderId}. Cerco nuovi documenti da autorizzare.`
-                    : scanProgress.mode === 'all'
-                      ? `Scansione locale ${scanProgress.currentIndex} di ${scanProgress.total}: pratica ${scanProgress.currentFolderId}. I conteggi si aggiornano al termine.`
-                    : `Scansione locale pratica ${scanProgress.currentFolderId}.`}
-                  {scanProgress.cancelRequested ? ' Stop richiesto: mi fermo dopo la pratica corrente.' : ''}
-                </span>
-                {scanProgress.mode !== 'single' && !scanProgress.cancelRequested ? (
-                  <button
-                    type="button"
-                    onClick={onCancelScan}
-                    className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-100"
-                  >
-                    Ferma dopo questa pratica
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          {scanSummary ? (
-            <div
-              className={[
-                'border-b px-5 py-3 text-sm',
-                scanSummary.tone === 'success' ? 'border-green-100 bg-green-50 text-green-800' : '',
-                scanSummary.tone === 'warning' ? 'border-amber-100 bg-amber-50 text-amber-900' : '',
-                scanSummary.tone === 'danger' ? 'border-red-100 bg-red-50 text-red-800' : ''
-              ].join(' ')}
-            >
-              <div>{scanSummary.message}</div>
-              {scanSummary.issues?.length ? (
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
-                  {scanSummary.issues.slice(0, 6).map((issue) => <li key={issue}>{issue}</li>)}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="max-h-[34rem] overflow-auto p-4">
-            {practiceCount === 0 ? (
-              <div className="px-1 py-8 text-sm text-slate-500">Nessuna pratica caricata.</div>
-            ) : visiblePractices.length ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {visiblePractices.map((practice) => {
-                  const currentScan = scanningFolder === practice.folderId
-                  return (
-                    <article key={practice.folderId} className="flex min-h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-slate-900">{practice.label}</span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                            {practice.folderId}
-                          </span>
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                            {practice.matter}
-                          </span>
-                        </div>
-                        <div className="mt-2 truncate text-sm text-slate-500" title={practice.path}>Path locale: {compactPath(practice.path)}</div>
-                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                          <span className="rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-amber-800">{practice.reviewRequired} da rivedere</span>
-                          <span className="rounded-md border border-green-100 bg-green-50 px-2 py-1 text-green-800">{practice.approved} approvati</span>
-                          <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-blue-800">{practice.exposed} via MCP/LLM</span>
-                          <span className="rounded-md border border-red-100 bg-red-50 px-2 py-1 text-red-800">{practice.cloudBlockedSensitiveDocs} bloccati</span>
-                          {practice.pendingWrites ? (
-                            <span className="rounded-md border border-violet-100 bg-violet-50 px-2 py-1 text-violet-800">{practice.pendingWrites} bozze</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={currentScan ? `Scansione in corso per pratica ${practice.folderId}` : `Scansiona pratica ${practice.folderId}`}
-                        onClick={() => onScan(practice.folderId)}
-                        disabled={scanBusy}
-                        className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-                      >
-                        {currentScan ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
-                        {currentScan ? 'Scansione...' : 'Scansiona'}
-                      </button>
-                    </article>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-600">
-                Nessuna pratica richiede attenzione. Usa "Mostra tutte" per vedere anche quelle gia' gestite.
-              </div>
-            )}
-          </div>
-        </section>
-
-        {writeDetail ? (
+  if (writeDetail) {
+    return (
+      <main className="flex-1 bg-slate-50 p-6">
+        <div className="mx-auto max-w-6xl">
           <PendingWritePanel
             detail={writeDetail}
             busy={actionBusy}
@@ -1832,126 +2213,22 @@ function Dashboard({
               setActionError(null)
             }}
           />
-        ) : null}
+        </div>
+      </main>
+    )
+  }
 
-        <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-            <div>
-              <h2 className="font-medium text-slate-900">Attivita'</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Documenti, sensibilita', stato MCP/LLM e bozze in una lista compatta.
-              </p>
-            </div>
-            <input
-              aria-label="Cerca documento o pratica nelle attivita'"
-              value={activitySearch}
-              onChange={(event) => setActivitySearch(event.target.value)}
-              placeholder="Cerca documento o pratica"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:w-64"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-3">
-            {ACTIVITY_FILTERS.map((filter) => (
-              <button
-                key={filter.id}
-                type="button"
-                onClick={() => setActivityFilter(filter.id)}
-                aria-pressed={activityFilter === filter.id}
-                className={[
-                  'inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition',
-                  activityFilter === filter.id
-                    ? ACTIVITY_FILTER_CLASSES[filter.id].active
-                    : ACTIVITY_FILTER_CLASSES[filter.id].inactive
-                ].join(' ')}
-              >
-                <span>{filter.label}</span>
-                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[11px] leading-none text-current ring-1 ring-current/20">
-                  {activityFilterCounts[filter.id]}
-                </span>
-              </button>
-            ))}
-          </div>
-          <div>
-            <div className="hidden grid-cols-[5rem_minmax(14rem,1.7fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_5.5rem] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-medium uppercase text-slate-500 lg:grid">
-              <div>Pratica</div>
-              <div>Documento</div>
-              <div>Review</div>
-              <div>Sensibilita'</div>
-              <div>MCP/LLM</div>
-              <div className="text-right">Azione</div>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {visibleActivityRows.length ? (
-                visibleActivityRows.map((row) => (
-                  <div
-                    key={row.key}
-                    className="grid gap-3 px-5 py-4 text-sm lg:grid-cols-[5rem_minmax(14rem,1.7fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_5.5rem] lg:items-start"
-                  >
-                    <div>
-                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Pratica</div>
-                      <div className="font-medium text-slate-900">{row.label}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Documento</div>
-                      <div className="break-words leading-5 text-slate-800" title={row.document}>{row.document}</div>
-                    </div>
-                    <div>
-                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Review</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className={`rounded-full border px-2 py-1 text-xs font-medium ${activityReviewBadgeClass(row)}`}>
-                          {row.review}
-                        </span>
-                        {row.isSensitive ? (
-                          <span className={`rounded-full border px-2 py-1 text-xs font-medium ${ACTIVITY_FILTER_CLASSES.sensitive.badge}`}>
-                            Sensibile
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Sensibilita'</div>
-                      <span className={[
-                        'inline-flex max-w-full whitespace-normal rounded-full px-2 py-1 text-xs leading-4',
-                        row.isSensitive ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'
-                      ].join(' ')}>
-                        {row.sensitivity}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">MCP/LLM</div>
-                      <span className={`inline-flex max-w-full whitespace-normal rounded-full border px-2 py-1 text-xs leading-4 ${statusPillClass(row.kind === 'write' ? 'local' : mcpExposureTone(row.cloud))}`}>
-                        {row.cloud}
-                      </span>
-                    </div>
-                    <div className="flex lg:justify-end">
-                      <button
-                        type="button"
-                        aria-label={`${row.action} ${row.document} nella pratica ${row.label}`}
-                        onClick={() => {
-                          if (row.kind === 'write' && row.relPath) {
-                            void openPendingWrite(row.folderId, row.relPath)
-                          } else if (row.docId) {
-                            void openReviewDocument(row.folderId, row.docId)
-                          }
-                        }}
-                        className="inline-flex min-w-20 justify-center rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                      >
-                        {row.action}
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-5 py-8 text-sm text-slate-500">
-                  Nessuna attivita' per il filtro selezionato.
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-            Mostrate {visibleActivityRows.length} di {filteredActivityRows.length} risultati filtrati ({activityRows.length} attivita' totali). Usa i filtri per restringere la lista.
-          </div>
-        </section>
+  return (
+    <main className="flex-1 bg-slate-50 p-6">
+      <div className="mx-auto max-w-6xl space-y-6">
+        {actionError ? <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</div> : null}
+        {page === 'dashboard' ? (
+          <DashboardOverviewPage status={status} dashboard={dashboard} counts={counts} onPageChange={onPageChange} />
+        ) : page === 'scan' ? (
+          renderScanPage()
+        ) : (
+          renderActivityPage()
+        )}
       </div>
     </main>
   )
@@ -1981,8 +2258,10 @@ export default function App(): React.JSX.Element {
   const [onboardingDismissed, setOnboardingDismissed] = useState(
     () => localStorage.getItem(ONBOARDING_KEY) === 'true'
   )
+  const [page, setPage] = useState<MainPage>('dashboard')
 
   const screen: Screen = !onboardingDismissed ? 'onboarding' : status?.mcpReady ? 'dashboard' : 'setup'
+  const headerCounts = status?.mcpReady ? navigationCounts(dashboard, scanProgress) : null
 
   function dismissOnboarding(permanent: boolean): void {
     if (permanent) localStorage.setItem(ONBOARDING_KEY, 'true')
@@ -1996,6 +2275,9 @@ export default function App(): React.JSX.Element {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <AppHeader
+        page={status?.mcpReady ? page : undefined}
+        counts={headerCounts}
+        onPageChange={status?.mcpReady ? setPage : undefined}
         onRefresh={() => void refresh()}
         onShowPrivacy={() => {
           localStorage.removeItem(ONBOARDING_KEY)
@@ -2017,6 +2299,7 @@ export default function App(): React.JSX.Element {
         </main>
       ) : status?.mcpReady ? (
         <Dashboard
+          page={page}
           status={status}
           dashboard={dashboard}
           reviewDocs={reviewDocs}
@@ -2029,6 +2312,7 @@ export default function App(): React.JSX.Element {
           onScanAll={() => void scanAllPractices()}
           onCancelScan={requestScanCancel}
           onRefresh={refresh}
+          onPageChange={setPage}
         />
       ) : (
         <SetupScreen

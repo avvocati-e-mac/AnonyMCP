@@ -1,16 +1,16 @@
-# Test bozze LLM e re-idratazione locale
+# Test bozze LLM da confermare
 
-Questi test riguardano M-Write: il LLM scrive usando pseudonimi, AnonyMCP re-idrata localmente
-e salva la bozza in attesa di conferma.
+Questi test riguardano M-Write: il LLM scrive usando pseudonimi, AnonyMCP completa la bozza
+localmente con dati reali e la salva in attesa di conferma.
 
-La bozza re-idratata puo' contenere dati reali locali. Con `mcp-electron` usare solo dati
-sintetici.
+La bozza completata localmente puo' contenere dati reali locali. Con `mcp-electron` usare solo
+dati sintetici.
 
-## WR-001 - Bozze LLM visibili come attivita' locale
+## WR-001 - Bozze LLM visibili nella pagina Bozze
 
 Scopo:
-Verificare che le bozze in attesa compaiano in dashboard senza confondersi con documenti gia'
-approvati.
+Verificare che le bozze in attesa compaiano nella pagina `Bozze` senza confondersi con documenti
+gia' approvati.
 
 Strumenti mcp-electron:
 `get_body_text`, `click_by_text`.
@@ -22,9 +22,10 @@ Passi:
 
 1. Preparare una bozza M-Write sintetica.
 2. Aprire dashboard.
-3. Verificare KPI `Bozze LLM in attesa`.
-4. Cliccare filtro `Bozze`.
-5. Verificare che la riga mostri `Bozza LLM` e azione `Conferma bozza`.
+3. Verificare KPI/card `Bozze LLM da confermare` e badge `Bozze` se presente.
+4. Aprire `Bozze` dalla top nav.
+5. Verificare che la pagina spieghi: `Generate sui pseudonimi, poi completate localmente con i dati reali`.
+6. Verificare che la riga mostri `Bozza LLM` e azione `Conferma bozza`.
 
 Atteso:
 La bozza e' trattata come attivita' locale da confermare, non come output gia' salvato nella
@@ -34,7 +35,7 @@ Red team:
 Verificare che la bozza non appaia come documento disponibile via MCP/LLM.
 
 Fallimento grave se:
-Una bozza re-idratata sembra gia' salvata o disponibile senza conferma.
+Una bozza completata localmente sembra gia' salvata o disponibile senza conferma.
 
 ## WR-002 - Apertura dettaglio bozza
 
@@ -54,16 +55,16 @@ Passi:
 3. Verificare path relativa, file name, hashMatches e contenuto.
 4. Verificare che compaia la catena `LLM` -> `AnonyMCP locale` -> `Cartella pratica`.
 5. Verificare la presenza di `Controlli prima del salvataggio`.
-6. Verificare se il copy chiarisce che la bozza e' locale e re-idratata.
-7. Verificare che compaia un warning esplicito: il testo puo' contenere dati reali reinseriti
-   localmente e il LLM ha lavorato sui pseudonimi.
+6. Verificare se il copy chiarisce che la bozza e' locale e completata con dati reali solo sul computer.
+7. Verificare che compaia un warning esplicito: il testo puo' contenere dati reali nella UI locale
+   e il LLM ha lavorato sui pseudonimi.
 
 Atteso:
 L'utente capisce che sta vedendo una bozza locale destinata alla cartella pratica e che il testo
 puo' contenere dati reali sul computer, non ricevuti dal LLM.
 
 Red team:
-Cercare ambiguita' tra `testo ricevuto dal LLM`, `testo re-idratato locale` e file finale nella
+Cercare ambiguita' tra `testo ricevuto dal LLM`, bozza completata localmente e file finale nella
 cartella pratica.
 
 Fallimento grave se:
@@ -113,7 +114,7 @@ Passi:
 
 1. Aprire dettaglio bozza.
 2. Cliccare `Salva nella pratica locale`.
-3. Attendere aggiornamento dashboard.
+3. Attendere aggiornamento della pagina `Bozze` e della top nav.
 4. Verificare che la bozza non sia piu' in attesa.
 
 Atteso:
@@ -150,4 +151,4 @@ Red team:
 Verificare se la promozione e' bloccata o richiede scelta esplicita.
 
 Fallimento grave se:
-Il sistema indovina una re-idratazione ambigua senza segnalazione.
+Il sistema completa una bozza ambigua indovinando i dati reali senza segnalazione.

@@ -7,6 +7,18 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Modificato — Electron UI
+- Dashboard riorganizzata con top nav persistente: `Dashboard`, `Review`, `Bloccati`, `Bozze`,
+  `Scansione`, con badge accessibili per le cose da gestire.
+- La dashboard mostra situazione MCP locale e azioni principali; le liste operative lunghe sono
+  spostate nelle pagine dedicate.
+- La sezione `Cosa devo fare adesso` usa card azionabili con badge numerici circolari in tono e
+  CTA centrate (`Apri Review`, `Apri Bloccati`, `Apri Bozze`, `Apri Scansione`).
+- La scansione usa il copy `Cerca nuovi documenti nelle pratiche`; i conteggi pratica sono badge
+  compatti senza spazi vuoti inutili.
+- Il badge di stato e' rinominato `Config UI pronta` per non suggerire che il client LLM collegato
+  sia gia' stato verificato.
+
 ## [0.1.0-beta.1] - 2026-06-03
 
 > Beta desktop di test: non ancora deployabile in produzione legale. Serve a provare la UI
@@ -33,8 +45,8 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
   automaticamente come opachi quando il nome cartella sembra identificante.
 - L'inserimento manuale delle pratiche ha una schermata dedicata con drag and drop di una o
   più cartelle e scelta alternativa tramite finestra di sistema.
-- Review locale delle bozze LLM in staging: la UI mostra la bozza re-idratata solo in locale e
-  consente la promozione esplicita nella cartella finale della pratica.
+- Review locale delle bozze LLM in staging: la UI mostra la bozza completata localmente con dati
+  reali solo in locale e consente la promozione esplicita nella cartella finale della pratica.
 - I payload MCP verso Claude/Codex non suggeriscono piu' comandi Terminale/TUI per review e
   bozze in attesa: indicano invece la dashboard Electron di AnonyMCP come punto di conferma
   locale.

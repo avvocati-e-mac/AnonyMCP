@@ -18,10 +18,12 @@ Config sintetica.
 Passi:
 
 1. Aprire dashboard.
-2. Leggere il blocco superiore.
-3. Verificare la presenza di `Config UI`, `Hash config`, `Folder MCP locali`.
-4. Verificare che folderId/label siano opachi, per esempio `400f`, `215s`, `400F`, `215S`.
-5. Con config sintetica estesa, verificare che una lista di almeno 12 folder resti leggibile.
+2. Verificare che la top nav abbia `Dashboard` come pagina corrente e che non sia icon-only.
+3. Leggere il blocco superiore.
+4. Verificare la presenza di `Config UI`, `Hash config`, `Folder MCP locali`.
+5. Verificare che folderId/label siano opachi, per esempio `400f`, `215s`, `400F`, `215S`.
+6. Con config sintetica estesa, verificare che una lista di almeno 12 folder resti leggibile.
+7. Verificare che i badge della top nav non sostituiscano le informazioni su config e folder.
 
 Atteso:
 La dashboard consente di capire quale configurazione locale e' caricata.
@@ -34,6 +36,10 @@ overflow orizzontale.
 Fallimento grave se:
 La UI non mostra alcuna informazione sulla config locale o mostra label identificanti nel campo
 MCP.
+
+Accessibilita':
+`Dashboard` deve esporre lo stato corrente con `aria-current="page"` o equivalente; i badge nav
+devono avere un significato accessibile, non solo un numero colorato.
 
 ## DASH-002 - Path locale utile ma marcata come locale
 
@@ -66,10 +72,10 @@ Fallimento grave se:
 La UI fa pensare che la path reale sia esposta al LLM oppure se la stessa path compare in un
 payload MCP durante test separati.
 
-## DASH-003 - Badge MCP configurato non deve dare falsa sicurezza
+## DASH-003 - Badge Config UI pronta non deve dare falsa sicurezza
 
 Scopo:
-Verificare che il badge `MCP configurato` non venga interpretato come garanzia che il client LLM
+Verificare che il badge `Config UI pronta` non venga interpretato come garanzia che il client LLM
 esterno veda la stessa config.
 
 Strumenti mcp-electron:
@@ -81,7 +87,7 @@ Config sintetica.
 Passi:
 
 1. Aprire dashboard.
-2. Leggere il testo vicino a `MCP configurato`.
+2. Leggere il testo vicino a `Config UI pronta`.
 3. Verificare se c'e' un warning sulla verifica del client LLM dopo modifiche config.
 4. Valutare se il messaggio e' abbastanza visibile.
 
@@ -90,10 +96,11 @@ La dashboard avvisa che la UI puo' usare una config diversa dal server MCP colle
 LLM e che serve verifica.
 
 Red team:
-Chiedersi se un utente potrebbe vedere solo il badge verde e ignorare il warning.
+Chiedersi se un utente potrebbe vedere solo il badge di stato UI e ignorare il warning.
 
 Fallimento grave se:
-La UI comunica `MCP configurato` senza alcun avviso di config drift.
+La UI comunica stato pronto/configurato senza alcun avviso di config drift, o se il badge fa
+pensare che il client LLM sia stato verificato.
 
 ## DASH-004 - Griglia operativa senza KPI duplicati
 
@@ -120,6 +127,16 @@ Passi:
 6. Verificare che la zona `MCP/LLM` dica che vengono esposti solo testi pseudonimizzati,
    approvati e consentiti dalla policy.
 7. Verificare che la zona locale chiarisca che path e originali restano sul computer.
+8. Verificare che le card `Cosa devo fare adesso` usino badge numerici circolari in tono con la
+   scheda, non un colore unico che confonde stati diversi.
+9. Verificare che le CTA delle card siano centrate e leggibili come pulsanti, pur restando parte
+   della card cliccabile.
+10. Verificare che la card `Scansione locale` non mostri uno stato inutile come `pronta` e usi una
+   CTA di navigazione (`Apri Scansione`) se non avvia subito la scansione.
+11. Verificare che i badge della top nav siano orientamento di navigazione, non una seconda riga KPI
+   rassicurante.
+12. Verificare che `Bloccati`, `Bozze` e `Scansione` siano espansi nel copy o aria-label come
+   `Bloccati MCP/LLM`, `Bozze locali` e `Scansione locale`.
 
 Atteso:
 Le card rendono leggibile il confine locale/review/MCP con un solo numero per concetto.
@@ -129,8 +146,8 @@ Valutare se `MCP/LLM` puo' essere interpretato come garanzia di anonimizzazione 
 assoluta.
 
 Fallimento grave se:
-La dashboard mostra due righe di KPI con gli stessi conteggi o un badge verde generico senza
-distinguere locale, review e disponibilita' MCP/LLM.
+La dashboard mostra due righe di KPI con gli stessi conteggi, un badge verde generico senza
+distinguere locale/review/MCP, o nav badge che sembrano indicare approvazione cloud.
 
 ## DASH-005 - KPI coerenti con le righe
 
@@ -147,18 +164,17 @@ Passi:
 
 1. Scansionare le pratiche sintetiche.
 2. Leggere la griglia alta: locale reale/pratiche, review, MCP/LLM, bloccati e bozze locali.
-3. Applicare filtro `Da rivedere`.
-4. Applicare filtro `Sensibili`.
-5. Applicare filtro `Bozze` se presenti.
-6. Verificare che i filtri mostrino conteggi coerenti con le righe filtrate.
-7. Confrontare il senso dei KPI con le righe mostrate.
+3. Aprire `Review` e verificare che badge/conteggio siano coerenti con le righe da rivedere.
+4. Aprire `Bloccati` e verificare che badge/conteggio siano coerenti con le righe `Bloccato MCP/LLM`.
+5. Aprire `Bozze` se presenti e verificare che badge/conteggio siano coerenti con le bozze LLM da confermare.
+6. Tornare a `Dashboard` e confrontare il senso dei KPI con le righe viste nelle pagine dedicate.
 
 Atteso:
-I KPI non contraddicono la tabella e i filtri aiutano a trovare il lavoro da fare.
+I KPI non contraddicono le pagine dedicate e la navigazione aiuta a trovare il lavoro da fare.
 
 Red team:
-Provare ricerca con una stringa non presente e verificare che il messaggio `Nessuna attivita'`
-sia chiaro.
+Provare ricerca con una stringa non presente in ciascuna pagina dedicata e verificare che il
+messaggio `Nessun risultato` o equivalente sia chiaro.
 
 Fallimento grave se:
 La dashboard nasconde documenti sensibili o mostra KPI rassicuranti mentre esistono righe
@@ -178,11 +194,12 @@ Pratiche sintetiche con documenti da review e sensibili.
 
 Passi:
 
-1. Leggere la tabella attivita'.
-2. Identificare colonne `Review`, `Sensibilita'`, `MCP/LLM`.
+1. Aprire `Review`, `Bloccati` e `Bozze`.
+2. Identificare colonne `Review`, `Sensibilita'`, `MCP/LLM` nelle pagine operative.
 3. Verificare che `Approvato localmente` non equivalga automaticamente a `Disponibile via MCP/LLM`.
-4. Verificare che i sensibili appaiano `Bloccato MCP/LLM` o equivalente.
-5. Verificare che i badge `Da rivedere`, `Sensibile`, `Bozza` e `Approvato localmente` siano
+4. Verificare che i sensibili appaiano `Bloccato MCP/LLM` o equivalente nella pagina `Bloccati`.
+5. Verificare che la pagina `Review` non implichi disponibilita' MCP/LLM prima dell'approvazione.
+6. Verificare che i badge `Da rivedere`, `Sensibile`, `Bozza` e `Approvato localmente` siano
    testuali e non solo cromatici.
 
 Atteso:
@@ -208,13 +225,14 @@ Pratiche sintetiche.
 
 Passi:
 
-1. Cliccare `Scansiona` su una pratica.
-2. Osservare se il pulsante mostra stato occupato.
-3. Attendere aggiornamento dashboard.
-4. Verificare che compaiano documenti da rivedere.
-5. Con molte pratiche, usare `debug_elements` e verificare che ogni pulsante abbia un label
-   specifico, per esempio `Scansiona pratica 300F`.
-6. Durante una scansione, verificare che gli altri pulsanti `Scansiona` siano disabilitati.
+1. Aprire la pagina `Scansione` dalla top nav.
+2. Cliccare `Cerca nuovi documenti` su una pratica.
+3. Osservare se il pulsante mostra stato occupato.
+4. Attendere aggiornamento dashboard/nav.
+5. Verificare che i documenti nuovi compaiano in `Review` come `Da rivedere`.
+6. Con molte pratiche, usare `debug_elements` e verificare che ogni pulsante abbia un label
+   specifico, per esempio `Cerca nuovi documenti nella pratica 300F`.
+7. Durante una scansione, verificare che gli altri pulsanti scansione siano disabilitati.
 
 Atteso:
 La UI comunica che la scansione e' in corso e poi mostra un risultato.
@@ -240,18 +258,19 @@ Config sintetica con almeno 12 pratiche e un documento con nome lungo.
 Passi:
 
 1. Aprire dashboard con config sintetica estesa.
-2. Verificare che `Pratiche` mostri le pratiche da gestire in griglia multi-colonna quando lo spazio lo consente.
-3. Verificare che il contenitore resti scrollabile e che la lettura segua l'ordine DOM/visivo.
-4. Scansionare le pratiche extra.
-5. Verificare che la lista `Attivita'` mostri i documenti delle pratiche extra.
-6. Verificare che un nome lungo, per esempio `Tizio vs Caio Comparsa...`, vada a capo senza
+2. Verificare che la top nav resti utilizzabile a finestra stretta/media/larga senza overflow.
+3. Aprire `Scansione` e verificare che le pratiche da gestire siano in griglia multi-colonna quando lo spazio lo consente.
+4. Verificare che il contenitore resti scrollabile e che la lettura segua l'ordine DOM/visivo.
+5. Scansionare le pratiche extra.
+6. Aprire `Review` e verificare che la lista mostri i documenti delle pratiche extra.
+7. Verificare che un nome lungo, per esempio `Tizio vs Caio Comparsa...`, vada a capo senza
    nascondere il pulsante `Apri`.
-7. Verificare con `document.documentElement.scrollWidth <= document.documentElement.clientWidth`
+8. Verificare con `document.documentElement.scrollWidth <= document.documentElement.clientWidth`
    che non ci sia overflow orizzontale.
-8. Ridimensionare: finestra stretta = 1 colonna, media = 2 colonne, larga = 3 colonne.
+9. Ridimensionare: finestra stretta = 1 colonna, media = 2 colonne, larga = 3 colonne.
 
 Atteso:
-Molte pratiche e nomi lunghi non rompono la dashboard; le azioni restano visibili.
+Molte pratiche e nomi lunghi non rompono dashboard, top nav o pagine dedicate; le azioni restano visibili.
 
 Red team:
 Ridimensionare la finestra e controllare se il nome documento invade le colonne stato o azione.
@@ -262,7 +281,7 @@ Fallimento grave se:
 Il pulsante `Apri` sparisce, la pagina richiede scroll orizzontale o una pratica configurata non e'
 raggiungibile dalla UI.
 
-## DASH-009 - Scansiona tutto sequenziale
+## DASH-009 - Cerca nuovi documenti sequenziale
 
 Scopo:
 Verificare che la scansione di tutte le pratiche riduca lavoro ripetitivo senza cambiare il confine
@@ -276,25 +295,25 @@ Config sintetica con almeno 12 pratiche.
 
 Passi:
 
-1. Aprire dashboard con molte pratiche configurate.
-2. Cliccare `Scansiona tutto`.
+1. Aprire `Scansione` con molte pratiche configurate.
+2. Cliccare `Cerca nuovi documenti nelle pratiche`.
 3. Verificare la presenza di un messaggio di avanzamento, per esempio `Scansione locale 1 di 12`.
 4. Verificare che i pulsanti di scansione singola siano disabilitati durante la scansione.
 5. Verificare che il testo dica che la scansione e' locale e non espone nulla via MCP/LLM.
 6. Se la scansione dura abbastanza, cliccare `Ferma dopo questa pratica` e verificare che il copy
    prometta stop dopo la pratica corrente, non interruzione immediata.
-7. Attendere la fine e verificare che i conteggi della dashboard vengano aggiornati.
+7. Attendere la fine e verificare che i conteggi di dashboard e top nav vengano aggiornati.
 
 Atteso:
 La scansione bulk usa le stesse regole della scansione singola, procede in modo sequenziale e lascia
 i documenti nuovi in review.
 
 Red team:
-Provare doppi click su `Scansiona tutto` e su `Scansiona` durante la scansione; non devono partire
+Provare doppi click su `Cerca nuovi documenti nelle pratiche` e su `Cerca nuovi documenti` durante la scansione; non devono partire
 scansioni parallele. Verificare che il copy non suggerisca approvazione o esposizione automatica.
 
 Fallimento grave se:
-`Scansiona tutto` rende disponibili documenti via MCP/LLM senza review, avvia scansioni parallele o
+`Cerca nuovi documenti nelle pratiche` rende disponibili documenti via MCP/LLM senza review, avvia scansioni parallele o
 mostra un successo generico che fa pensare a pubblicazione verso il cloud.
 
 ## DASH-010 - Pratiche gia' gestite nascoste di default
@@ -311,8 +330,8 @@ bozze pendenti.
 
 Passi:
 
-1. Aprire dashboard.
-2. Verificare che la sezione `Pratiche` mostri un conteggio tipo `X visibili / Y configurate`.
+1. Aprire `Scansione`.
+2. Verificare che la sezione pratiche mostri un conteggio tipo `X visibili / Y configurate`.
 3. Verificare che le pratiche con review, bloccati MCP/LLM o bozze restino visibili.
 4. Verificare che pratiche gia' gestite siano nascoste di default.
 5. Cliccare `Mostra tutte`.
@@ -324,7 +343,7 @@ Il filtro riduce rumore ma rende sempre evidente il totale delle pratiche config
 
 Red team:
 Verificare che una pratica con documenti sensibili bloccati non venga nascosta. Verificare che
-`Scansiona tutto` continui a riferirsi a tutte le pratiche configurate, non solo a quelle visibili.
+`Cerca nuovi documenti nelle pratiche` continui a riferirsi a tutte le pratiche configurate, non solo a quelle visibili.
 
 Fallimento grave se:
 Il filtro fa credere che pratiche configurate siano state rimosse o nasconde pratiche con documenti
@@ -346,17 +365,18 @@ Passi:
 
 1. Avviare app con config valida.
 2. Attendere la dashboard.
-3. Verificare la comparsa di `Scansione iniziale locale` o del riepilogo finale della scansione.
-4. Verificare che il copy dica che nulla viene esposto via MCP/LLM senza review.
-5. Verificare che i pulsanti di scansione siano disabilitati durante l'auto-scan.
-6. Se esiste un nuovo documento sintetico, verificare che appaia come `Da rivedere` e non come
+3. Verificare se la top nav mostra `Scansione` in corso oppure aprire `Scansione`.
+4. Verificare la comparsa di `Scansione iniziale locale` o del riepilogo finale della scansione.
+5. Verificare che il copy dica che nulla viene esposto via MCP/LLM senza review.
+6. Verificare che i pulsanti di scansione siano disabilitati durante l'auto-scan.
+7. Se esiste un nuovo documento sintetico, verificare che appaia in `Review` come `Da rivedere` e non come
    `Disponibile via MCP/LLM`.
 
 Atteso:
 L'auto-scan aggiorna la dashboard e lascia i nuovi documenti in review/quarantena.
 
 Red team:
-Cliccare `Scansiona tutto` durante auto-scan: non devono partire scansioni parallele. Verificare che
+Cliccare `Cerca nuovi documenti nelle pratiche` durante auto-scan: non devono partire scansioni parallele. Verificare che
 il messaggio non usi parole come pubblicato, sincronizzato col cloud o approvato automaticamente.
 
 Fallimento grave se:

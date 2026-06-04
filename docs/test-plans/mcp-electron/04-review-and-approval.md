@@ -16,15 +16,17 @@ Pratiche sintetiche scansionate.
 
 Passi:
 
-1. Dalla dashboard aprire una riga con azione `Apri` o `Valuta`.
-2. Attendere la schermata review.
-3. Verificare la presenza di `Originale locale`, `Pseudonimizzato` e `Decisioni` come zone distinte.
-4. Verificare che su desktop testi e colonna decisioni/entita' siano visibili nello stesso workspace, con scroll interni e senza una pagina verticale infinita.
-5. Verificare che `Decisioni`, `Prima di approvare` e `Sensibilita` abbiano icone riconoscibili.
-6. Verificare che il riquadro `Decisioni` mostri il flusso `Entita` -> `Anteprima` -> `Approva` -> `MCP/LLM`.
-7. Verificare che la spiegazione `Come viene calcolato` sia dentro il riquadro `Rischio residuo`, non in un blocco separato.
-8. Verificare la presenza di lista entita' laterale e pulsante `Applica selezione e approva localmente`.
-9. Ridimensionare la finestra desktop, tablet e stretta: i blocchi devono riordinarsi senza sovrapporsi e senza sprecare spazio evidente.
+1. Dalla top nav aprire `Review`.
+2. Verificare che `Review` sia la pagina corrente e che il badge sia coerente con la coda.
+3. Aprire una riga con azione `Apri` o `Valuta`.
+4. Attendere la schermata review.
+5. Verificare la presenza di `Originale locale`, `Pseudonimizzato` e `Decisioni` come zone distinte.
+6. Verificare che su desktop testi e colonna decisioni/entita' siano visibili nello stesso workspace, con scroll interni e senza una pagina verticale infinita.
+7. Verificare che `Decisioni`, `Prima di approvare` e `Sensibilita` abbiano icone riconoscibili.
+8. Verificare che il riquadro `Decisioni` mostri il flusso `Entita` -> `Anteprima` -> `Approva` -> `MCP/LLM`.
+9. Verificare che la spiegazione `Come viene calcolato` sia dentro il riquadro `Rischio residuo`, non in un blocco separato.
+10. Verificare la presenza di lista entita' laterale e pulsante `Applica selezione e approva localmente`.
+11. Ridimensionare la finestra desktop, tablet e stretta: i blocchi devono riordinarsi senza sovrapporsi e senza sprecare spazio evidente.
 
 Atteso:
 La schermata chiarisce che il testo originale e' locale, che il testo pseudonimizzato e' solo
@@ -141,8 +143,9 @@ Passi:
 2. Lasciare selezionate le entita' rilevate.
 3. Leggere il riquadro `Prima di approvare`.
 4. Cliccare `Applica selezione e approva localmente`.
-5. Attendere ritorno o aggiornamento dashboard.
-6. Verificare che il documento cambi stato.
+5. Attendere ritorno o aggiornamento della pagina.
+6. Verificare che il documento cambi stato e che il badge `Review` diminuisca.
+7. Se il documento e' sensibile, verificare che possa comparire/restare in `Bloccati` e non diventi automaticamente disponibile via MCP/LLM.
 
 Atteso:
 Il documento non e' piu' da review. La disponibilita' MCP/LLM dipende comunque dalla sensibilita'
@@ -169,8 +172,8 @@ Pratiche sintetiche.
 Passi:
 
 1. Aprire review.
-2. Cliccare `Torna alla dashboard`.
-3. Verificare il ritorno alla dashboard.
+2. Cliccare `Torna senza approvare` oppure usare la top nav per uscire.
+3. Verificare il ritorno alla pagina precedente o alla pagina selezionata.
 4. Verificare che lo stato del documento non sia approvato per errore.
 
 Atteso:
@@ -181,4 +184,4 @@ Modificare campi manuali e chiudere; verificare se l'utente capisce che le modif
 state applicate.
 
 Fallimento grave se:
-Chiudere la review cambia lo stato del documento.
+Chiudere la review o navigare via top nav cambia lo stato del documento.

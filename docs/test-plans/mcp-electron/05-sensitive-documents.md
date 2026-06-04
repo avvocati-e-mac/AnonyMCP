@@ -3,10 +3,11 @@
 Questi test verificano il principio: AnonyMCP suggerisce, l'avvocato decide localmente, ma con
 `allowCloudForSensitive=false` i documenti sensibili non devono arrivare al LLM cloud.
 
-## SEN-001 - Documento suggerito sensibile visibile in dashboard
+## SEN-001 - Documento suggerito sensibile visibile in Bloccati
 
 Scopo:
-Verificare che un documento con salute, penale o minori emerga nella dashboard.
+Verificare che un documento con salute, penale o minori emerga nella pagina `Bloccati` e nei
+badge della top nav.
 
 Strumenti mcp-electron:
 `get_body_text`, `click_by_text`.
@@ -17,15 +18,16 @@ Pratiche sintetiche generate da `npm run gen:test-pratiche`, che includono refer
 Passi:
 
 1. Scansionare le pratiche.
-2. Aprire dashboard.
-3. Cliccare filtro `Sensibili`.
+2. Aprire dashboard e verificare il badge `Bloccati` se presente.
+3. Aprire `Bloccati` dalla top nav.
 4. Verificare che compaiano documenti suggeriti sensibili o bloccati MCP/LLM.
+5. Verificare che il copy espanda `Bloccati` in `Bloccati MCP/LLM`.
 
 Atteso:
 I documenti sensibili non sono nascosti in una lista secondaria difficile da trovare.
 
 Red team:
-Verificare se il KPI `Bloccati MCP/LLM` e' coerente con il filtro.
+Verificare se KPI dashboard, badge top nav e righe della pagina `Bloccati` sono coerenti.
 
 Fallimento grave se:
 Un documento sensibile non appare come urgente o bloccato.
@@ -73,8 +75,9 @@ Passi:
 
 1. Aprire review.
 2. Cliccare `Sensibile - blocca MCP/LLM`.
-3. Tornare o aggiornare dashboard.
-4. Verificare che la riga mostri `Bloccato MCP/LLM` o equivalente nella colonna `MCP/LLM`.
+3. Tornare o aggiornare.
+4. Aprire `Bloccati`.
+5. Verificare che la riga mostri `Bloccato MCP/LLM` o equivalente nella colonna `MCP/LLM`.
 
 Atteso:
 Il documento resta locale anche se puo' essere approvato localmente.
@@ -130,7 +133,7 @@ Passi:
 
 1. Impostare `Non sensibile nel contesto`.
 2. Cliccare `Usa suggerimento`.
-3. Verificare che la dashboard torni a considerare il documento suggerito sensibile.
+3. Verificare che dashboard, top nav e pagina `Bloccati` tornino a considerare il documento suggerito sensibile.
 
 Atteso:
 Il default prudente e' recuperabile.

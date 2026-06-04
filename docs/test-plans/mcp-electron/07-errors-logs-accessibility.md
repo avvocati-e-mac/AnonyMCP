@@ -71,9 +71,11 @@ Solo sintetici.
 Passi:
 
 1. Aprire dashboard e review sintetica.
-2. Leggere log Electron recenti.
-3. Verificare che i log non contengano testo originale del documento.
-4. Verificare che eventuali log console riportino solo conteggi o messaggi redatti.
+2. Navigare anche in `Dashboard`, `Review`, `Bloccati`, `Bozze`, `Scansione`.
+3. Leggere log Electron recenti.
+4. Verificare che i log non contengano testo originale del documento.
+5. Verificare che eventuali log console riportino solo conteggi o messaggi redatti.
+6. Verificare che aggiornamenti badge/nav non logghino nomi file reali o testo originale.
 
 Atteso:
 Nessun contenuto originale nei log.
@@ -100,22 +102,25 @@ Passi:
 1. Eseguire `find_elements` sulla schermata.
 2. Controllare pulsanti senza testo o aria-label.
 3. Controllare input senza placeholder o label.
-4. In dashboard, verificare che `Scansiona`, `Apri` e `Valuta` abbiano aria-label contestuali
-   alla pratica o al documento.
-5. Verificare che `Scansiona tutto` abbia aria-label esplicito, per esempio `Scansiona tutte le
-   pratiche configurate localmente`.
-6. Verificare che `Mostra tutte` / `Nascondi gia' gestite` usi `aria-pressed`.
-7. Verificare che la ricerca attivita' abbia aria-label, non solo placeholder.
-8. Durante scansione bulk o auto-scan iniziale, verificare che l'avanzamento abbia `role="status"`
-   e `aria-live`.
-9. Segnalare elementi critici poco comprensibili.
+4. Verificare che top nav esponga `Dashboard`, `Review`, `Bloccati`, `Bozze`, `Scansione` con nomi accessibili.
+5. Verificare che i badge nav abbiano significato accessibile, per esempio `Bloccati MCP/LLM, 2 documenti` e `Bozze locali, 1 bozza`.
+6. Verificare che la pagina corrente usi `aria-current="page"` o equivalente.
+7. In `Scansione`, verificare che `Cerca nuovi documenti` abbia aria-label contestuale alla pratica;
+   in `Review` e `Bloccati`, verificare che `Apri` e `Valuta` abbiano aria-label contestuali al documento.
+8. Verificare che `Cerca nuovi documenti nelle pratiche` abbia aria-label esplicito, per esempio
+   `Cerca nuovi documenti in tutte le pratiche configurate localmente`.
+9. Verificare che `Mostra tutte` / `Nascondi gia' gestite` usi `aria-pressed`.
+10. Verificare che la ricerca in `Review`, `Bloccati` e `Bozze` abbia aria-label, non solo placeholder.
+11. Durante scansione bulk o auto-scan iniziale, verificare che l'avanzamento abbia `role="status"`
+    e `aria-live`.
+12. Segnalare elementi critici poco comprensibili.
 
 Atteso:
 Le azioni principali sono riconoscibili anche senza interpretare icone.
 
 Red team:
-Concentrarsi su icone header, refresh e impostazioni.
-Controllare anche azioni ripetute con lo stesso testo visibile, come piu' pulsanti `Scansiona`.
+Concentrarsi su icone header, top nav, refresh e impostazioni.
+Controllare anche azioni ripetute con lo stesso testo visibile, come piu' pulsanti `Cerca nuovi documenti`.
 Controllare che `Ferma dopo questa pratica` sia chiaro e non prometta cancellazione immediata.
 Controllare che i pulsanti scansione risultino disabilitati durante l'auto-scan iniziale.
 
@@ -136,15 +141,17 @@ Schermate sintetiche.
 Passi:
 
 1. Premere Tab ripetutamente.
-2. Verificare se il focus avanza su pulsanti e input.
-3. Premere Enter su un'azione non distruttiva.
-4. Verificare che non si attivino azioni pericolose in modo inatteso.
+2. Verificare se il focus attraversa top nav, pulsanti e input in ordine prevedibile.
+3. Premere Enter/Space su una voce nav e verificare che cambi solo pagina.
+4. Premere Enter su un'azione non distruttiva.
+5. Verificare che non si attivino azioni pericolose in modo inatteso.
 
 Atteso:
 Focus prevedibile e azioni chiare.
 
 Red team:
 Provare Tab nella review vicino a `Applica selezione e approva localmente` e nelle opzioni sensibilita'.
+Verificare che la navigazione top nav non attivi scansione, approvazione o salvataggio bozze.
 
 Fallimento grave se:
 La tastiera attiva approvazione o cambio sensibilita' senza controllo visibile.
@@ -166,18 +173,23 @@ Passi:
 2. Verificare che badge colorati abbiano testo: `Bloccato MCP/LLM`, `Da rivedere`, `Disponibile via MCP/LLM`.
 3. Aprire review e controllare entita'.
 4. Verificare che il tipo entita' sia scritto, non solo colorato.
-5. Verificare che i filtri attivita' abbiano testo e conteggio, non solo colore.
+5. Verificare che le pagine operative e le relative ricerche abbiano testo esplicito, non solo colore.
 6. Verificare che le card pratica mostrino testi per `da rivedere`, `approvati`, `via MCP/LLM` e
    `bloccati`, non solo badge cromatici.
 7. Verificare che la griglia alta usi label testuali distinte (`Locale reale`, `Review umana`,
-   `MCP/LLM`, `Bloccati MCP/LLM`, `Bozze locali`) e non comunichi i conteggi solo con colore.
+    `MCP/LLM`, `Bloccati MCP/LLM`, `Bozze locali`) e non comunichi i conteggi solo con colore.
+8. Verificare che i badge top nav non siano solo pallini/colori e che `Bloccati`, `Bozze`,
+   `Scansione` abbiano significato testuale o accessibile completo.
+9. Verificare che i badge numerici circolari nelle card dashboard siano in tono con la scheda e
+   accompagnati da titolo/testo, non solo colore.
 
 Atteso:
 Il colore aiuta ma non e' l'unico canale informativo.
 
 Red team:
 Immaginare uno screenshot in bianco e nero: gli stati restano comprensibili?
-Verificare anche i badge `Sensibile`, `Bozze` e `Approvati localmente` nella lista attivita'.
+Verificare anche i badge `Sensibile`, `Bozze` e `Approvati localmente` nelle pagine dedicate.
+Verificare anche che la pagina corrente in top nav non sia indicata solo dal colore.
 
 Fallimento grave se:
 Lo stato MCP/LLM o sensibilita' dipende solo dal colore.

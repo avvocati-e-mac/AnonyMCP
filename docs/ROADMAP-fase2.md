@@ -69,16 +69,18 @@ Priorita' operativa:
 3. Prima di dichiarare il canale cloud governato: RT-06 e RT-07, con decisione esplicita su
    `residualRisk` e search query.
 
-## Red-team 2026-06-04 — badge "MCP configurato" e divergenza config
+## Red-team 2026-06-04 — badge stato UI e divergenza config
 
-Review della dashboard Electron (sezione header). Il badge verde **"MCP configurato"** è
-fuorviante: comunica all'utente *"l'LLM è collegato al filtro"*, ma misura tutt'altro. Aggiunge
-RT-09 alla lista bloccante (severità media: non è un leak diretto, ma un **falso senso di
-controllo** in uno strumento la cui unica ragione d'essere è impedire i leak).
+Review della dashboard Electron (sezione header). Un badge verde tipo **"MCP configurato"** è
+fuorviante: comunica all'utente *"l'LLM è collegato al filtro"*, ma misura tutt'altro. Il badge UI
+e' stato rinominato `Config UI pronta` e reso neutro; resta aperta la verifica automatica del client
+LLM collegato. RT-09 resta nella lista bloccante per la parte di divergenza config (severità media:
+non è un leak diretto, ma un **falso senso di controllo** in uno strumento la cui unica ragione
+d'essere è impedire i leak).
 
 | ID | Milestone | Severita' | Evidenza codice | Rischio concreto | Remediation richiesta | Test di accettazione |
 |---|---|---:|---|---|---|---|
-| RT-09 | M4/M6 Electron onestà stato | Media | `src/electron/main/index.ts:readAppStatus` (`mcpReady = config.folders.length > 0`); `src/electron/main/index.ts:configPath` (`ANONYMCP_CONFIG` env vs `userData/anonymcp.config.json`); `src/electron/renderer/src/App.tsx` badge "MCP configurato" + banner ambra | Il badge si accende solo perché la config letta dalla UI ha ≥1 cartella. Non verifica che un server MCP sia in esecuzione, né che un client LLM sia collegato, né che il client usi **lo stesso file** di config. La config UI (`userData/...`) può divergere da quella del server reale (`ANONYMCP_CONFIG` impostata dal client): approvazioni, override di sensibilità ed esclusioni decise nella UI **possono non applicarsi** al server effettivamente in ascolto. | Rinominare il badge per riflettere ciò che misura davvero (es. "Cartelle configurate (UI)"); rendere persistente/evidente l'avviso di possibile divergenza; mostrare se `ANONYMCP_CONFIG` è impostata e se coincide col path della UI. Opzionale ma risolutivo: auto-config dei client (vedi nota sotto) con **un'unica sorgente di config**. | Status onesto quando config UI ≠ `ANONYMCP_CONFIG` (badge/banner riflettono la divergenza); test del rendering condizionale del badge. |
+| RT-09 | M4/M6 Electron onestà stato | Media | `src/electron/main/index.ts:readAppStatus` (`mcpReady = config.folders.length > 0`); `src/electron/main/index.ts:configPath` (`ANONYMCP_CONFIG` env vs `userData/anonymcp.config.json`); `src/electron/renderer/src/App.tsx` badge `Config UI pronta` + banner ambra | Il badge si accende solo perché la config letta dalla UI ha ≥1 cartella. Non verifica che un server MCP sia in esecuzione, né che un client LLM sia collegato, né che il client usi **lo stesso file** di config. La config UI (`userData/...`) può divergere da quella del server reale (`ANONYMCP_CONFIG` impostata dal client): approvazioni, override di sensibilità ed esclusioni decise nella UI **possono non applicarsi** al server effettivamente in ascolto. | Fatto: badge rinominato per riflettere ciò che misura davvero e warning persistente. Residuo: mostrare se `ANONYMCP_CONFIG` è impostata e se coincide col path della UI. Opzionale ma risolutivo: auto-config dei client (vedi nota sotto) con **un'unica sorgente di config**. | Status onesto quando config UI ≠ `ANONYMCP_CONFIG` (badge/banner riflettono la divergenza); test del rendering condizionale del badge. |
 
 **Nota multi-client (remediation opzionale, multipiattaforma).** Oggi non esiste codice che generi
 config per i client: la guida è solo manuale nel README. Una feature "Collega a…" risolverebbe la

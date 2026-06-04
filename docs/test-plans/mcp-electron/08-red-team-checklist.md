@@ -23,7 +23,7 @@ diventare issue, test automatico o modifica UI.
 
 ## Falsa sicurezza
 
-- Il badge `MCP configurato` non basta da solo a rassicurare l'utente.
+- Il badge `Config UI pronta` non fa pensare che il client LLM sia stato verificato.
 - Esiste un warning su possibile config diversa tra UI e client LLM.
 - I KPI non nascondono documenti sensibili o da rivedere.
 - Il colore verde non viene usato per stati diversi senza testo esplicito.
@@ -36,7 +36,7 @@ diventare issue, test automatico o modifica UI.
 - La lista entita' mostra tipo, originale, pseudonimo, fonte e occorrenze.
 - L'utente puo' aggiungere entita' mancanti.
 - Deselezionare entita' importanti non e' facile da fare per errore.
-- `Applica selezione e approva localmente` e' distinguibile da `Torna alla dashboard`.
+- `Applica selezione e approva localmente` e' distinguibile da `Torna senza approvare`.
 - Chiudere la review non approva.
 
 ## Sensibilita'
@@ -50,7 +50,7 @@ diventare issue, test automatico o modifica UI.
 ## Bozze LLM
 
 - Le bozze sono `in attesa`, non gia' salvate.
-- Il dettaglio bozza chiarisce che il contenuto re-idratato e' locale.
+- Il dettaglio bozza chiarisce che il contenuto completato con dati reali e' locale.
 - Bozza con hash non valido non si puo' confermare.
 - Ambiguita' pseudonimi non viene nascosta.
 - Il dettaglio bozza mostra la catena `LLM` -> `AnonyMCP locale` -> `Cartella pratica`.

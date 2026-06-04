@@ -12,6 +12,7 @@ dettaglio, le guide in [docs/agent-guides/](docs/agent-guides/).
 - 5. Flusso MCP: scan → quarantena → approvazione → read (sequence)
 - 6. Stati di un documento (state machine)
 - 6-bis. Persistenza: perché esiste e cosa verifica
+- 6-ter. Navigazione UI Electron locale
 - 7. Sicurezza e privacy
 - 8. Token-minimization (Fase 2)
 - 9. Processo di sviluppo (come è stato costruito)
@@ -31,7 +32,8 @@ LLM. È l'utente a scegliere le cartelle. Nulla di sensibile lascia la macchina 
 ## 2. Le due fasi
 - **Fase 1 (questo repo)** — server MCP stdio standalone, cartelle in `anonymcp.config.json`,
   documenti testuali (`.txt`/`.md`).
-- **Fase 2** — app Electron (evoluzione di Anonimator): UI consenso cartelle, log live,
+- **Fase 2** — app Electron (evoluzione di Anonimator): dashboard locale, top nav operativa
+  (`Dashboard`, `Review`, `Bloccati`, `Bozze`, `Scansione`), consenso cartelle, log live,
   parser binari (PDF/DOCX/OCR), NER `italian-ner-xxl-v2` in worker, generatori DPIA/registro.
   Perché Electron e non Tauri: il motore è già Node/TS con native pesanti (riuso 1:1; Tauri
   imporrebbe un sidecar Node). Dettaglio nel piano di progetto.
@@ -156,7 +158,9 @@ stateDiagram-v2
 ```
 
 La revisione umana avviene tramite la TUI di Fase 1 (`npm run review -- --practice <id>`):
-lista entità colorata + anteprima Originale/Anonimizzato. Vedi `src/tui/`. Fase 2 = app Electron.
+lista entità colorata + anteprima Originale/Anonimizzato. Vedi `src/tui/`. Fase 2 = app Electron,
+con coda `Review` locale e dettaglio documento che distingue `Originale locale` e
+`Pseudonimizzato`.
 
 ## 6-bis. Persistenza: perché esiste e cosa verifica
 La persistenza serve a non ricominciare da zero ogni volta che il server MCP viene spento e
@@ -207,6 +211,26 @@ Il criterio guida resta semplice: la persistenza è utile solo se riduce errori 
 senza aumentare ciò che esce verso il LLM. Se un dato serve solo localmente, resta locale; se un
 dato attraversa MCP, deve essere pseudonimizzato, approvato e non bloccato dalla policy sui dati
 sensibili.
+
+## 6-ter. Navigazione UI Electron locale
+
+L'app Electron e' una UI locale sopra i servizi gia' descritti; non aggiunge canali MCP e non
+modifica i gate di esposizione. La top nav divide il lavoro operativo in cinque pagine:
+
+- `Dashboard`: situazione attuale dell'MCP locale e prossime azioni; mostra config UI, hash e
+  `folderId` opachi, piu' il warning sulla possibile divergenza dal client LLM collegato.
+- `Review`: coda dei documenti da controllare; puo' aprire il dettaglio con testo originale reale,
+  ma solo nella UI locale.
+- `Bloccati`: documenti non disponibili via MCP/LLM per sensibilita' o policy, anche se gia'
+  approvati localmente.
+- `Bozze`: bozze LLM da confermare; generate sui pseudonimi e completate localmente con i dati
+  reali prima del salvataggio nella pratica.
+- `Scansione`: ricerca locale di nuovi documenti nelle pratiche; prepara review/quarantena e non
+  espone nulla via MCP/LLM.
+
+I badge della nav sono orientativi: indicano lavoro locale o stato in corso, non approvazione e
+non disponibilita' cloud. Le etichette corte (`Bloccati`, `Bozze`, `Scansione`) devono avere testo
+visibile o accessibile che le espanda in `Bloccati MCP/LLM`, `Bozze locali` e `Scansione locale`.
 
 ## 7. Sicurezza e privacy
 Sintesi; dettaglio in [security-invariants](docs/agent-guides/security-invariants.md) e

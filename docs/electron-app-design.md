@@ -307,7 +307,8 @@ Target futuro lato server MCP: un tool/status non sensibile, per esempio
 
 ```text
 +--------------------------------------------------------------------------------+
-| Dashboard generale                                      MCP configurato [OK]    |
+| AnonyMCP  Dashboard | Review 13 | Bloccati 4 | Bozze | Scansione              |
+| Dashboard generale                                      Config UI pronta        |
 | Config UI: anonymcp.config.json  Hash: 91ab42  Folders: 1, 100F                |
 | Ultima verifica client MCP: non eseguita dopo modifica config [Verifica MCP]    |
 +--------------------------------------------------------------------------------+
@@ -324,7 +325,7 @@ Se la verifica fallisce:
 +--------------------------------------------------------------------------------+
 ```
 
-### 7.2 Dashboard compatta
+### 7.2 Dashboard compatta e top nav
 
 La dashboard deve rispondere subito a:
 
@@ -334,23 +335,37 @@ La dashboard deve rispondere subito a:
 - quali bozze LLM attendono conferma;
 - quali azioni posso fare ora.
 
-Le metriche alte restano, ma sotto deve esserci una tabella compatta con filtri. Le liste
-verticali separate sono accettabili solo per pochi elementi; con molte cartelle/documenti
-occupano troppo spazio e nascondono il lavoro.
+Le metriche alte restano, ma le liste operative sono spostate in pagine dedicate raggiungibili
+dalla top nav. La dashboard non deve contenere liste lunghe: mostra situazione MCP locale,
+confine locale/review/MCP e card di azione. Le pagine dedicate contengono le code lunghe.
+
+Top nav operativa:
+
+- `Dashboard` = situazione attuale MCP + cosa fare adesso;
+- `Review` = coda locale documenti da controllare;
+- `Bloccati` = documenti bloccati MCP/LLM;
+- `Bozze` = bozze LLM da confermare;
+- `Scansione` = ricerca locale di nuovi documenti nelle pratiche.
+
+I badge di nav sono orientamento globale: visibili solo se c'e' lavoro o stato in corso, con
+testo/aria-label che esplicita `Bloccati MCP/LLM`, `Bozze locali` e `Scansione locale`.
+Nella sezione `Cosa devo fare adesso`, i conteggi usano badge circolari in tono con la scheda
+e le CTA (`Apri Review`, `Apri Bloccati`, `Apri Bozze`, `Apri Scansione`) sono centrate e
+visivamente simili a pulsanti, senza creare bottoni annidati.
 
 ```text
 +--------------------------------------------------------------------------------+
-| Pratiche 2 | Da review 13 | Sensibili/bloccati 4 | Bozze LLM 0                 |
+| Dashboard | Review 13 | Bloccati 4 | Bozze 1 | Scansione                     |
 +--------------------------------------------------------------------------------+
-| [Tutti] [Da review] [Sensibili] [Bozze] [Approvati]        Cerca [__________]  |
+| Locale reale 12 | Review umana 13 | MCP/LLM 8 | Bloccati MCP/LLM 4 | Bozze 1 |
 +--------------------------------------------------------------------------------+
-| Pratica | Documento              | Review       | Sensibilita'       | Azione  |
-| 1       | contratto_clean.txt     | Approvato    | Non sensibile      | Apri    |
-| 1       | perizia_clean.txt       | Da review    | Suggerito salute   | Valuta  |
-| 100F    | contratto_affitto.md    | Da review    | Suggerito penale   | Valuta  |
-| 100F    | atto_citazione_test.md  | Da review    | Non sensibile      | Apri    |
+| Cosa devo fare adesso?                                                        |
+| [Review umana   (13)]      Apri Review                                        |
+| [Bloccati MCP/LLM (4)]     Apri Bloccati                                      |
+| [Bozze LLM da confermare (1)] Apri Bozze                                      |
+| [Scansione locale]         Apri Scansione                                     |
 +--------------------------------------------------------------------------------+
-| 1-20 di 87 documenti                                             [<] [>]       |
+| Config UI | Hash config | Folder MCP locali | warning verifica client LLM      |
 +--------------------------------------------------------------------------------+
 ```
 
@@ -358,13 +373,31 @@ Regole UI:
 
 - ogni riga deve avere un solo comando primario vicino allo stato: `Apri`, `Valuta`,
   `Conferma bozza`;
-- i documenti sensibili non devono stare solo in una seconda lista: devono emergere anche nel
-  filtro `Sensibili`;
+- i documenti sensibili devono emergere nella pagina `Bloccati`, non restare nascosti nella
+  dashboard;
 - mostrare massimo 20-30 righe per pagina o usare virtualizzazione;
 - la tabella non deve mostrare path completi per default: mostra pratica/label opaca e nome
   file; il path reale puo' comparire in tooltip/detail locale;
 - i contatori devono essere coerenti con le righe: se la lista mostra quattro bloccati, il KPI
   non puo' essere zero.
+
+Schermata `Scansione`:
+
+```text
++--------------------------------------------------------------------------------+
+| Dashboard | Review 13 | Bloccati 4 | Bozze 1 | Scansione                     |
++--------------------------------------------------------------------------------+
+| Scansione locale                                                              |
+| Cerca nuovi documenti nelle pratiche. Nulla e' esposto via MCP/LLM senza       |
+| review.                         [Mostra tutte] [Cerca nuovi documenti...]     |
++--------------------------------------------------------------------------------+
+| Scansione locale 1 di 12: pratica 300F. I conteggi si aggiornano al termine.   |
+|                                                   [Ferma dopo questa pratica]  |
++--------------------------------------------------------------------------------+
+| 300F | Path locale: .../300F | 2 da rivedere | 0 bloccati | [Scansione...]    |
+| 400F | Path locale: .../400F | 1 da rivedere | 1 bloccato | [Cerca nuovi...]  |
++--------------------------------------------------------------------------------+
+```
 
 ## 8. Review documenti
 
@@ -373,7 +406,8 @@ testo originale e nomi file reali, ma questi valori non devono uscire via MCP.
 
 ```text
 +--------------------------------------------------------------------------------+
-| < Dashboard | Review documento                                  contratto.md   |
+| Dashboard | Review 13 | Bloccati 4 | Bozze 1 | Scansione                     |
+| < Torna senza approvare | Review documento                       contratto.md   |
 | Pratica 1 | Da review | Non sensibile | Cloud: non disponibile finche' approvi  |
 +--------------------------------------------------------------------------------+
 | Originale locale                         | Pseudonimizzato                      |
@@ -532,23 +566,27 @@ Implementazione locale prevista/avviata:
   lista review e lista documenti sensibili bloccati.
 - il dettaglio review espone testo originale e nomi file solo alla UI locale; gli schemi lista
   restano separati e rifiutano campi come `originalText`.
+- la top nav separa `Review` e `Bloccati`: un documento sensibile ancora da rivedere compare in
+  `Review`, mentre la pagina `Bloccati` mostra tutto cio' che resta non disponibile via MCP/LLM.
 - il setup cartelle usa il dialog di sistema e supporta import manuale, cartella "Pratiche"
   e struttura Clienti/Pratiche; l'import manuale supporta anche drag and drop di una o piu'
   cartelle tramite `webUtils.getPathForFile`; i nomi identificanti vengono sostituiti da
   numeri opachi ordinati per data di creazione.
-- le bozze LLM in staging hanno lista leggera e dettaglio locale separato; il testo re-idratato
-  compare solo nella UI locale prima della promozione finale.
+- le bozze LLM in staging hanno pagina `Bozze` e dettaglio locale separato; il testo completato
+  con dati reali compare solo nella UI locale prima della promozione finale.
 
 ```text
 +------------------------------------------------------------------+
-| Documenti da valutare / sensibili                                |
+| Dashboard | Review 13 | Bloccati 4 | Bozze 1 | Scansione        |
+| Bloccati MCP/LLM                                                 |
 +------------------------------------------------------------------+
-| Pratica | Documento      | Suggerimento AnonyMCP | Decisione     |
-| 400F    | memoria.md     | penale                | da valutare   |
-| 215S    | relazione.md   | salute                | sensibile     |
-| 88A     | ricorso.md     | nessuno               | sensibile     |
-|                                                                  |
-| [Apri review] [Valuta sensibilita']                              |
+| Documenti approvati o da valutare che restano bloccati al canale |
+| MCP/LLM per sensibilita' o policy. Restano nella UI locale.      |
++------------------------------------------------------------------+
+| Pratica | Documento      | Review        | Sensibilita' | Azione |
+| 400F    | memoria.md     | Da rivedere   | penale       | Valuta |
+| 215S    | relazione.md   | Approvato     | sensibile    | Valuta |
+| 88A     | ricorso.md     | Approvato     | sensibile    | Valuta |
 +------------------------------------------------------------------+
 ```
 
@@ -569,8 +607,8 @@ Red team della soluzione:
   non riconosce tutto, checklist manuale, comando `Aggiungi entita'` sempre visibile;
 - rischio: config drift tra UI e MCP. Mitigazione: `configHash`, verifica runtime MCP,
   avviso bloccante se UI e client LLM divergono;
-- rischio: la dashboard compatta nasconde urgenze. Mitigazione: filtri, badge distinti,
-  KPI coerenti e riga azionabile unica;
+- rischio: la dashboard compatta nasconde urgenze. Mitigazione: pagine dedicate, badge distinti,
+  badge circolari in tono nella sezione azioni, KPI coerenti e riga azionabile unica;
 - rischio: path reali visibili per abitudine. Mitigazione: path completi solo in dettaglio
   locale/tooltip, mai in liste MCP-facing o ritorni IPC non necessari;
 - rischio: scroll sincronizzato impreciso. Mitigazione: sync per blocchi quando possibile,
@@ -618,9 +656,10 @@ Il LLM non deve vedere:
 - mapping reale-pseudonimo;
 - motivazioni locali di override che possono identificare persone o fatti.
 
-## 11. Bozze LLM e re-idratazione locale
+## 11. Bozze LLM da confermare
 
-Il LLM scrive usando pseudonimi. AnonyMCP re-idrata localmente e salva in bozze in attesa.
+Il LLM scrive usando pseudonimi. AnonyMCP completa la bozza localmente con i dati reali e la
+lascia in attesa di conferma prima del salvataggio nella pratica.
 
 ```text
 +-------------------+       MCP write_document       +-------------+
@@ -632,7 +671,7 @@ Il LLM scrive usando pseudonimi. AnonyMCP re-idrata localmente e salva in bozze 
 +-------------------+                                +------+------+
                                                            |
                                                            v
-                                           re-idrata localmente
+                                           completa localmente
                                            Persona 1 -> Mario Rossi
                                                            |
                                                            v
@@ -643,20 +682,18 @@ Schermata:
 
 ```text
 +------------------------------------------------------------------+
-| Bozze create dal LLM                                             |
+| Dashboard | Review 13 | Bloccati 4 | Bozze 1 | Scansione        |
+| Bozze LLM da confermare                                          |
 +------------------------------------------------------------------+
-| Testo ricevuto dal LLM      Re-idratazione locale    File finale |
-| con pseudonimi              nomi veri solo su Mac    pratica     |
+| Generate sui pseudonimi, poi completate localmente con i dati    |
+| reali. Controllale prima di salvarle nella pratica.              |
 |                                                                  |
 | Percorso richiesto: Ricerche/bozza_parere.md                     |
 | Stato: in attesa di conferma                                     |
 |                                                                  |
-| Re-idratazione locale                                            |
-| - 8 pseudonimi sostituiti con valori reali                       |
-| - 0 pseudonimi ambigui                                           |
-|                                                                  |
-| Attenzione: questa bozza ora contiene dati reali. E' salvata in   |
-| bozze in attesa e non e' ancora nella cartella finale.            |
+| Catena locale: LLM -> AnonyMCP locale -> Cartella pratica        |
+| Attenzione: questa bozza puo' contenere dati reali nella UI       |
+| locale. Non e' ancora nella cartella finale.                      |
 |                                                                  |
 |                       [Lascia in attesa] [Apri anteprima]        |
 +------------------------------------------------------------------+
@@ -677,7 +714,7 @@ Conferma:
 | [x] bozza non modificata dopo la scrittura                       |
 | [x] nessun overwrite non autorizzato                             |
 |                                                                  |
-| La bozza contiene dati reali perche' e' destinata alla cartella   |
+| La bozza puo' contenere dati reali perche' e' destinata alla      |
 | locale della pratica, non al LLM.                                |
 |                                                                  |
 |                            [Annulla] [Salva nella pratica]       |
@@ -719,7 +756,7 @@ Requisiti bloccanti:
 Payload IPC:
 
 - il renderer conserva stato UI minimo: `folderId`, `docId`, filtri, tab, selezione;
-- testi originali, bozze re-idratate e mapping non sono persistiti in Zustand/localStorage;
+- testi originali, bozze completate localmente con dati reali e mapping non sono persistiti in Zustand/localStorage;
 - raw text e preview originali sono effimeri e cancellati al cambio schermata;
 - DTO di risposta/eventi separati dai modelli interni.
 
@@ -772,7 +809,7 @@ Payload IPC:
 - i canali IPC che restituiscono PII locale (`review:detail`, `write:detail`) sono ammessi solo
   per la UI locale fidata; una navigazione a pagina locale diversa deve renderli inaccessibili;
 - gli errori e i log renderer-forwarded non devono contenere testo originale, nomi reali, CF,
-  IBAN o bozza re-idratata.
+  IBAN o bozze completate localmente con dati reali.
 
 ## 14. Test bloccanti prima dell'implementazione completa
 
@@ -844,7 +881,7 @@ Usabilita':
 
 - con documenti misti, l'avvocato deve indicare correttamente quali puo' leggere Claude;
 - dato un testo con nome non rilevato, deve riuscire ad aggiungerlo senza conoscere il NER;
-- data una bozza re-idratata, deve capire che Claude non ha ricevuto i nomi reali.
+- data una bozza completata localmente con dati reali, deve capire che Claude non ha ricevuto i nomi reali.
 
 ## 15. Fonti e decisioni collegate
 

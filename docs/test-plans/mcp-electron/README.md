@@ -61,7 +61,7 @@ Il criterio corretto e':
 - `03-dashboard-and-cloud-boundary.md`: dashboard, path locale e confine cloud.
 - `04-review-and-approval.md`: review documento, entita' e approvazione.
 - `05-sensitive-documents.md`: documenti sensibili e blocco cloud.
-- `06-pending-writes.md`: bozze LLM e re-idratazione locale.
+- `06-pending-writes.md`: bozze LLM da confermare.
 - `07-errors-logs-accessibility.md`: errori, log, tastiera e chiarezza.
 - `08-red-team-checklist.md`: checklist sintetica di red-team.
 

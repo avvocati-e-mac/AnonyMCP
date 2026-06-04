@@ -61,7 +61,7 @@ La UI deve prevenire prima questi errori:
 - approvare senza review;
 - scambiare approvazione locale per esposizione MCP/LLM;
 - sbloccare documenti sensibili con un click inconsapevole;
-- confermare una bozza re-idratata senza capire che contiene dati reali;
+- confermare una bozza completata localmente senza capire che puo' contenere dati reali;
 - credere che la UI e il client LLM stiano usando la stessa config quando non e' verificato.
 
 Test mcp-electron:
