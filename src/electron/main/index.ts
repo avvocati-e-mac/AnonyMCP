@@ -43,7 +43,7 @@ import {
 import type { AnonyMcpConfig } from '../../types.js'
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL
-let serviceCache: { configPath: string; service: LocalReviewService } | null = null
+let serviceCache: { configPath: string; configHash?: string; service: LocalReviewService } | null = null
 
 function csp(): string {
   if (isDev) {
@@ -121,12 +121,13 @@ function configHash(path: string): string | undefined {
 }
 
 function localReviewService(): LocalReviewService {
-  const path = configPath()
-  if (serviceCache?.configPath === path) return serviceCache.service
+  const path = absoluteConfigPath()
+  const hash = configHash(path)
+  if (serviceCache?.configPath === path && serviceCache.configHash === hash) return serviceCache.service
   serviceCache?.service.close()
   const config = loadConfig(path)
   const service = LocalReviewService.fromConfig(config)
-  serviceCache = { configPath: path, service }
+  serviceCache = { configPath: path, configHash: hash, service }
   return service
 }
 
