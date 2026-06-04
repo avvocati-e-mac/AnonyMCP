@@ -69,6 +69,30 @@ Priorita' operativa:
 3. Prima di dichiarare il canale cloud governato: RT-06 e RT-07, con decisione esplicita su
    `residualRisk` e search query.
 
+## Red-team 2026-06-04 — badge "MCP configurato" e divergenza config
+
+Review della dashboard Electron (sezione header). Il badge verde **"MCP configurato"** è
+fuorviante: comunica all'utente *"l'LLM è collegato al filtro"*, ma misura tutt'altro. Aggiunge
+RT-09 alla lista bloccante (severità media: non è un leak diretto, ma un **falso senso di
+controllo** in uno strumento la cui unica ragione d'essere è impedire i leak).
+
+| ID | Milestone | Severita' | Evidenza codice | Rischio concreto | Remediation richiesta | Test di accettazione |
+|---|---|---:|---|---|---|---|
+| RT-09 | M4/M6 Electron onestà stato | Media | `src/electron/main/index.ts:readAppStatus` (`mcpReady = config.folders.length > 0`); `src/electron/main/index.ts:configPath` (`ANONYMCP_CONFIG` env vs `userData/anonymcp.config.json`); `src/electron/renderer/src/App.tsx` badge "MCP configurato" + banner ambra | Il badge si accende solo perché la config letta dalla UI ha ≥1 cartella. Non verifica che un server MCP sia in esecuzione, né che un client LLM sia collegato, né che il client usi **lo stesso file** di config. La config UI (`userData/...`) può divergere da quella del server reale (`ANONYMCP_CONFIG` impostata dal client): approvazioni, override di sensibilità ed esclusioni decise nella UI **possono non applicarsi** al server effettivamente in ascolto. | Rinominare il badge per riflettere ciò che misura davvero (es. "Cartelle configurate (UI)"); rendere persistente/evidente l'avviso di possibile divergenza; mostrare se `ANONYMCP_CONFIG` è impostata e se coincide col path della UI. Opzionale ma risolutivo: auto-config dei client (vedi nota sotto) con **un'unica sorgente di config**. | Status onesto quando config UI ≠ `ANONYMCP_CONFIG` (badge/banner riflettono la divergenza); test del rendering condizionale del badge. |
+
+**Nota multi-client (remediation opzionale, multipiattaforma).** Oggi non esiste codice che generi
+config per i client: la guida è solo manuale nel README. Una feature "Collega a…" risolverebbe la
+divergenza puntando ogni client allo **stesso file** della UI. I formati si raggruppano in:
+famiglia JSON `mcpServers` `{command,args,env}` (**Claude Desktop**, **Cursor**, anche VS Code /
+Windsurf / Cline; path per-OS: `~/Library/Application Support/Claude/`, `%APPDATA%\Claude\`,
+`~/.config/Claude/`); **Codex** in **TOML** (`~/.codex/config.toml`, `[mcp_servers.<nome>]`);
+**OpenCode** in JSON proprio (`opencode.json`, chiave `mcp`, `type:"local"`, `command` come array).
+Vincoli red-team se implementata: **merge** non distruttivo (mai sovrascrivere altri server MCP),
+backup prima di scrivere, **segreto `ANONYMCP_CACHE_KEY` non in chiaro** in file di terze app
+(keychain o avviso), path validati stile `pathGuard` (la riga di comando scritta nel config è
+codice eseguito all'avvio del client), e nessuna esposizione del mapping reale↔pseudonimo
+(l'auto-config tocca solo il trasporto).
+
 ## M-Write — scrittura LLM→cartella
 
 L'LLM legge documenti pseudonimizzati e produce bozze (atti, contratti, ricerche). L'LLM **non

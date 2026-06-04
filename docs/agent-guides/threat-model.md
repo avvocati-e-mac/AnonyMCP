@@ -50,6 +50,7 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 | **pathGuard** | Tampering/Disclosure | directory traversal / URI fuori allowlist; symlink che punta fuori pratica | `assertAllowed` + blocco artefatti interni; scan rifiuta symlink file; M-Write rifiuta segmenti symlink esistenti | RT-01 residuo: estendere `realpath`/`lstat` anche ai flussi di import/allowlist non MCP |
 | **M-Write** | Tampering/Disclosure | relPath verso artefatti interni o directory symlink; overwrite di store locali | path relativo, estensioni testuali, blocklist store/DB AnonyMCP, staging + hash + review locale, symlink target rifiutati | — |
 | **Electron UI/IPC** | Spoofing/Elevation/Disclosure | renderer navigato a pagina locale diversa che invoca IPC; console renderer con PII | `contextIsolation`, `sandbox`, `nodeIntegration=false`, CSP, preload nominale, Zod | RT-04: trust solo dell'esatto renderer packaged, non ogni `file://`; RT-08: redazione log renderer-forwarded |
+| **Dashboard / stato UI** | Spoofing (falso senso di sicurezza) | badge "MCP configurato" suggerisce un collegamento client→server che non viene verificato; config UI (`userData`) può divergere da quella del server reale (`ANONYMCP_CONFIG`) | banner ambra di avviso divergenza (`App.tsx`); `mcpReady` riflette solo la presenza di cartelle in config | RT-09: badge onesto su ciò che misura + verifica/visibilità della divergenza config UI↔server |
 | **stdio** | Tampering (protocollo) | log su stdout rompe JSON-RPC | logger **solo stderr** | — |
 | **Documento** | Spoofing/Elevation | prompt-injection nel contenuto | contenuto trattato come dato non-fidato; nessuna esecuzione server-side | difesa a livello host/LLM |
 | **Endpoint LLM** | Disclosure | dato sensibile inviato al cloud | `allowCloudForSensitive=false` blocca Resource/read/search dei documenti sensibili | routing esplicito LLM locale/cloud nella app Fase 2 |
@@ -67,6 +68,10 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
   renderer redatti e test su pagina `file://` non fidata.
 - RT-05: import label come allowlist stretta, non euristica permissiva; config manuale resta
   warning secondo ADR-0004 finche' non c'e' nuovo ADR.
+- RT-09: il badge "MCP configurato" misura solo `config.folders.length > 0`, non il
+  collegamento reale del client né l'allineamento tra config UI (`userData`) e config del server
+  (`ANONYMCP_CONFIG`). Rendere il badge onesto e segnalare/verificare la divergenza; valutare
+  auto-config dei client con sorgente unica (dettaglio e formati in `ROADMAP-fase2.md`).
 
 ## Suite di test red-team
 - `test/redteam.docid.test.ts` — non-invertibilità/opacità del docId.
