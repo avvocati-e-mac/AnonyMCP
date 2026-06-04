@@ -19,7 +19,12 @@ Passi:
 1. Dalla dashboard aprire una riga con azione `Apri` o `Valuta`.
 2. Attendere la schermata review.
 3. Verificare la presenza di `Originale locale`, `Pseudonimizzato` e `Decisioni` come zone distinte.
-4. Verificare la presenza di `Prima di approvare`, lista entita' e pulsante `Applica selezione e approva localmente`.
+4. Verificare che su desktop testi e colonna decisioni/entita' siano visibili nello stesso workspace, con scroll interni e senza una pagina verticale infinita.
+5. Verificare che `Decisioni`, `Prima di approvare` e `Sensibilita` abbiano icone riconoscibili.
+6. Verificare che il riquadro `Decisioni` mostri il flusso `Entita` -> `Anteprima` -> `Approva` -> `MCP/LLM`.
+7. Verificare che la spiegazione `Come viene calcolato` sia dentro il riquadro `Rischio residuo`, non in un blocco separato.
+8. Verificare la presenza di lista entita' laterale e pulsante `Applica selezione e approva localmente`.
+9. Ridimensionare la finestra desktop, tablet e stretta: i blocchi devono riordinarsi senza sovrapporsi e senza sprecare spazio evidente.
 
 Atteso:
 La schermata chiarisce che il testo originale e' locale, che il testo pseudonimizzato e' solo
@@ -27,6 +32,8 @@ candidato al canale MCP/LLM e che l'approvazione resta una decisione locale.
 
 Red team:
 Controllare se il titolo o il copy fanno sembrare il testo originale gia' sicuro per MCP/LLM.
+Controllare anche che il layout compatto non nasconda avvisi o decisioni importanti.
+Controllare se il diagramma a flussi suggerisce erroneamente che l'approvazione basti sempre per esporre a MCP/LLM.
 
 Fallimento grave se:
 La review non distingue originale locale e pseudonimizzato.
@@ -45,15 +52,16 @@ Pratiche sintetiche.
 Passi:
 
 1. Aprire un documento con molte entita'.
-2. Verificare che la lista mostri tipo, testo originale, pseudonimo, fonte e occorrenze.
-3. Verificare che nel testo ci siano evidenziazioni.
-4. Verificare che i colori non siano l'unica informazione disponibile.
+2. Verificare che la lista laterale mostri tipo, testo originale, pseudonimo, fonte e occorrenze.
+3. Cliccare una entita' nella lista e verificare che le anteprime si spostino verso l'occorrenza corrispondente.
+4. Verificare che nel testo ci siano evidenziazioni per le entita' attive.
+5. Verificare che i colori non siano l'unica informazione disponibile.
 
 Atteso:
 L'utente puo' capire quali entita' sono state rilevate senza dover interpretare solo colori.
 
 Red team:
-Aprire un documento lungo e verificare se la lista entita' resta utilizzabile.
+Aprire un documento lungo e verificare se la lista entita' resta utilizzabile e se il click su una voce aiuta a trovare il punto nel testo.
 
 Fallimento grave se:
 L'utente non puo' capire quali dati personali sono stati rilevati o esclusi.
@@ -101,15 +109,17 @@ Passi:
 
 1. Aprire review.
 2. Deselezionare una entita' sintetica.
-3. Verificare se la UI rende visibile che quell'entita' non sara' applicata.
-4. Non approvare se il comportamento non e' chiaro.
+3. Verificare che la voce risulti esclusa nella lista.
+4. Verificare che l'evidenziazione sparisca dall'originale locale.
+5. Verificare che l'anteprima `Pseudonimizzato` mostri di nuovo il testo originale per quella entita'.
+6. Non approvare se il comportamento non e' chiaro.
 
 Atteso:
 La selezione e' esplicita e l'utente capisce che deselezionare puo' influire sulla
 pseudonimizzazione.
 
 Red team:
-Deselezionare una PII importante e verificare se la UI avvisa abbastanza prima di approvare.
+Deselezionare una PII importante e verificare se la UI avvisa abbastanza prima di approvare e se l'anteprima rende evidente il rischio.
 
 Fallimento grave se:
 Un utente puo' togliere una PII dalla pseudonimizzazione senza rendersene conto.

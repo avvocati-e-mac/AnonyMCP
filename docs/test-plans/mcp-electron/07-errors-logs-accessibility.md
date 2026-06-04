@@ -100,13 +100,24 @@ Passi:
 1. Eseguire `find_elements` sulla schermata.
 2. Controllare pulsanti senza testo o aria-label.
 3. Controllare input senza placeholder o label.
-4. Segnalare elementi critici poco comprensibili.
+4. In dashboard, verificare che `Scansiona`, `Apri` e `Valuta` abbiano aria-label contestuali
+   alla pratica o al documento.
+5. Verificare che `Scansiona tutto` abbia aria-label esplicito, per esempio `Scansiona tutte le
+   pratiche configurate localmente`.
+6. Verificare che `Mostra tutte` / `Nascondi gia' gestite` usi `aria-pressed`.
+7. Verificare che la ricerca attivita' abbia aria-label, non solo placeholder.
+8. Durante scansione bulk o auto-scan iniziale, verificare che l'avanzamento abbia `role="status"`
+   e `aria-live`.
+9. Segnalare elementi critici poco comprensibili.
 
 Atteso:
 Le azioni principali sono riconoscibili anche senza interpretare icone.
 
 Red team:
 Concentrarsi su icone header, refresh e impostazioni.
+Controllare anche azioni ripetute con lo stesso testo visibile, come piu' pulsanti `Scansiona`.
+Controllare che `Ferma dopo questa pratica` sia chiaro e non prometta cancellazione immediata.
+Controllare che i pulsanti scansione risultino disabilitati durante l'auto-scan iniziale.
 
 Fallimento grave se:
 Un'azione con effetto privacy e' accessibile solo tramite icona non spiegata.
@@ -155,12 +166,16 @@ Passi:
 2. Verificare che badge colorati abbiano testo: `Bloccato MCP/LLM`, `Da rivedere`, `Disponibile via MCP/LLM`.
 3. Aprire review e controllare entita'.
 4. Verificare che il tipo entita' sia scritto, non solo colorato.
+5. Verificare che i filtri attivita' abbiano testo e conteggio, non solo colore.
+6. Verificare che le card pratica mostrino testi per `da rivedere`, `approvati`, `via MCP/LLM` e
+   `bloccati`, non solo badge cromatici.
 
 Atteso:
 Il colore aiuta ma non e' l'unico canale informativo.
 
 Red team:
 Immaginare uno screenshot in bianco e nero: gli stati restano comprensibili?
+Verificare anche i badge `Sensibile`, `Bozze` e `Approvati localmente` nella lista attivita'.
 
 Fallimento grave se:
 Lo stato MCP/LLM o sensibilita' dipende solo dal colore.

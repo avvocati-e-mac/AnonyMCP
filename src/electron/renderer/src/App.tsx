@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  CircleStop,
   Cloud,
-  EyeOff,
-  FileWarning,
   FolderPlus,
   ListChecks,
   Loader2,
@@ -14,7 +14,8 @@ import {
   Plus,
   RefreshCw,
   Settings,
-  ShieldCheck
+  ShieldCheck,
+  UserCheck
 } from 'lucide-react'
 import type {
   AppStatus,
@@ -31,6 +32,25 @@ import type {
 const ONBOARDING_KEY = 'anonymcp:onboarding-dismissed'
 
 type Screen = 'onboarding' | 'setup' | 'dashboard'
+type ScanMode = 'single' | 'all' | 'auto'
+
+interface RefreshOptions {
+  showLoading?: boolean
+}
+
+interface ScanProgress {
+  mode: ScanMode
+  currentFolderId: string
+  currentIndex: number
+  total: number
+  cancelRequested: boolean
+}
+
+interface ScanSummary {
+  tone: 'success' | 'warning' | 'danger'
+  message: string
+  issues?: string[]
+}
 
 interface AppModel {
   status: AppStatus | null
@@ -41,10 +61,14 @@ interface AppModel {
   loading: boolean
   error: string | null
   scanningFolder: string | null
+  scanProgress: ScanProgress | null
+  scanSummary: ScanSummary | null
   importingMode: FolderImportMode | null
   lastImport: FolderImportResult | null
-  refresh: () => Promise<void>
+  refresh: (options?: RefreshOptions) => Promise<void>
   scanPractice: (folderId: string) => Promise<void>
+  scanAllPractices: () => Promise<void>
+  requestScanCancel: () => void
   selectAndImportFolders: (mode: FolderImportMode) => Promise<void>
   importDroppedFolders: (files: File[]) => Promise<void>
 }
@@ -58,11 +82,17 @@ function useAppModel(): AppModel {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [scanningFolder, setScanningFolder] = useState<string | null>(null)
+  const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null)
+  const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null)
   const [importingMode, setImportingMode] = useState<FolderImportMode | null>(null)
   const [lastImport, setLastImport] = useState<FolderImportResult | null>(null)
+  const scanInFlightRef = useRef(false)
+  const scanCancelRequestedRef = useRef(false)
+  const startupAutoScanDoneRef = useRef(false)
 
-  async function refresh(): Promise<void> {
-    setLoading(true)
+  async function refresh(options: RefreshOptions = {}): Promise<void> {
+    const showLoading = options.showLoading ?? true
+    if (showLoading) setLoading(true)
     setError(null)
     try {
       const nextStatus = await window.anonymcp.getAppStatus()
@@ -87,21 +117,82 @@ function useAppModel(): AppModel {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
+    }
+  }
+
+  async function scanFolderIds(folderIds: string[], mode: ScanMode): Promise<void> {
+    if (!folderIds.length) return
+    if (scanInFlightRef.current) {
+      if (mode !== 'auto') {
+        setScanSummary({
+          tone: 'warning',
+          message: mode === 'all'
+            ? 'Una scansione locale e\' gia\' in corso. Attendi la fine prima di avviare la scansione di tutte le pratiche.'
+            : 'Una scansione locale e\' gia\' in corso. Attendi la fine prima di avviarne un\'altra.'
+        })
+      }
+      return
+    }
+    scanInFlightRef.current = true
+    scanCancelRequestedRef.current = false
+    setScanSummary(null)
+    setError(null)
+    const issues: string[] = []
+    let completed = 0
+
+    try {
+      for (const [index, folderId] of folderIds.entries()) {
+        if (scanCancelRequestedRef.current) break
+        setScanningFolder(folderId)
+        setScanProgress({
+          mode,
+          currentFolderId: folderId,
+          currentIndex: index + 1,
+          total: folderIds.length,
+          cancelRequested: false
+        })
+        try {
+          await window.anonymcp.scanPractice(folderId)
+          completed += 1
+        } catch {
+          issues.push(`${folderId}: controlla configurazione e permessi della cartella.`)
+        }
+      }
+      await refresh({ showLoading: false })
+      const stopped = scanCancelRequestedRef.current
+      const label = mode === 'auto' ? 'Scansione iniziale locale' : 'Scansione locale'
+      setScanSummary({
+        tone: issues.length || stopped ? 'warning' : 'success',
+        message: stopped
+          ? `${label} fermata dopo ${completed} di ${folderIds.length} pratiche. Nulla e' esposto via MCP/LLM senza review.`
+          : issues.length
+            ? `${label} completata con ${issues.length} errori. Le pratiche riuscite restano in review; nulla e' esposto via MCP/LLM.`
+            : mode === 'single'
+              ? `${label} completata per ${folderIds[0]}. I documenti nuovi restano in review; nulla e' esposto via MCP/LLM.`
+              : `${label} completata per ${completed} pratiche. I documenti nuovi restano in review; nulla e' esposto via MCP/LLM.`,
+        issues
+      })
+    } finally {
+      scanInFlightRef.current = false
+      scanCancelRequestedRef.current = false
+      setScanningFolder(null)
+      setScanProgress(null)
     }
   }
 
   async function scanPractice(folderId: string): Promise<void> {
-    setScanningFolder(folderId)
-    setError(null)
-    try {
-      await window.anonymcp.scanPractice(folderId)
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setScanningFolder(null)
-    }
+    await scanFolderIds([folderId], 'single')
+  }
+
+  async function scanAllPractices(): Promise<void> {
+    const folderIds = dashboard?.practices.map((practice) => practice.folderId) ?? []
+    await scanFolderIds(folderIds, 'all')
+  }
+
+  function requestScanCancel(): void {
+    scanCancelRequestedRef.current = true
+    setScanProgress((current) => current ? { ...current, cancelRequested: true } : current)
   }
 
   async function selectAndImportFolders(mode: FolderImportMode): Promise<void> {
@@ -136,6 +227,17 @@ function useAppModel(): AppModel {
     void refresh()
   }, [])
 
+  useEffect(() => {
+    if (!status?.mcpReady || !dashboard?.practices.length || importingMode || startupAutoScanDoneRef.current) return
+    const folderIds = dashboard.practices.map((practice) => practice.folderId)
+    const timer = window.setTimeout(() => {
+      if (startupAutoScanDoneRef.current) return
+      startupAutoScanDoneRef.current = true
+      void scanFolderIds(folderIds, 'auto')
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [dashboard, importingMode, status?.mcpReady])
+
   return {
     status,
     dashboard,
@@ -145,10 +247,14 @@ function useAppModel(): AppModel {
     loading,
     error,
     scanningFolder,
+    scanProgress,
+    scanSummary,
     importingMode,
     lastImport,
     refresh,
     scanPractice,
+    scanAllPractices,
+    requestScanCancel,
     selectAndImportFolders,
     importDroppedFolders
   }
@@ -512,7 +618,7 @@ function ExposureZonesPanel({ dashboard, status }: { dashboard: DashboardSummary
       value: totals?.reviewRequired ?? 0,
       body: 'Documenti da controllare prima di qualunque esposizione MCP.',
       tone: 'warning',
-      icon: <ListChecks size={18} />
+      icon: <UserCheck size={18} />
     },
     {
       title: 'MCP/LLM',
@@ -522,11 +628,11 @@ function ExposureZonesPanel({ dashboard, status }: { dashboard: DashboardSummary
       icon: <Cloud size={18} />
     },
     {
-      title: 'Bloccato MCP',
+      title: 'Bloccati MCP/LLM',
       value: totals?.cloudBlockedSensitiveDocs ?? 0,
       body: 'Documenti sensibili o non consentiti al canale LLM cloud.',
       tone: 'danger',
-      icon: <EyeOff size={18} />
+      icon: <CircleStop size={18} />
     }
   ]
 
@@ -573,6 +679,51 @@ interface ActivityRow {
   isSensitive: boolean
   isApproved: boolean
   action: string
+}
+
+type PracticeSummary = DashboardSummary['practices'][number]
+
+function isPracticeAlreadyManaged(practice: PracticeSummary): boolean {
+  return (
+    practice.approved > 0 &&
+    practice.reviewRequired === 0 &&
+    practice.cloudBlockedSensitiveDocs === 0 &&
+    practice.pendingWrites === 0
+  )
+}
+
+const ACTIVITY_FILTER_CLASSES: Record<ActivityFilter, { active: string; inactive: string; badge: string }> = {
+  all: {
+    active: 'border-slate-700 bg-slate-700 text-white',
+    inactive: 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+    badge: 'border-slate-300 bg-slate-100 text-slate-700'
+  },
+  review: {
+    active: 'border-amber-500 bg-amber-500 text-white',
+    inactive: 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100',
+    badge: 'border-amber-200 bg-amber-50 text-amber-900'
+  },
+  sensitive: {
+    active: 'border-red-600 bg-red-600 text-white',
+    inactive: 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100',
+    badge: 'border-red-200 bg-red-50 text-red-800'
+  },
+  writes: {
+    active: 'border-violet-600 bg-violet-600 text-white',
+    inactive: 'border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100',
+    badge: 'border-violet-200 bg-violet-50 text-violet-800'
+  },
+  approved: {
+    active: 'border-green-600 bg-green-600 text-white',
+    inactive: 'border-green-200 bg-green-50 text-green-800 hover:bg-green-100',
+    badge: 'border-green-200 bg-green-50 text-green-800'
+  }
+}
+
+function activityReviewBadgeClass(row: ActivityRow): string {
+  if (row.kind === 'write') return ACTIVITY_FILTER_CLASSES.writes.badge
+  if (row.isApproved) return ACTIVITY_FILTER_CLASSES.approved.badge
+  return ACTIVITY_FILTER_CLASSES.review.badge
 }
 
 const ENTITY_TYPES: ReviewDocumentDetail['entities'][number]['type'][] = [
@@ -626,7 +777,8 @@ function entityColorClass(type: ReviewDocumentDetail['entities'][number]['type']
 function highlightText(
   text: string,
   entities: ReviewDocumentDetail['entities'],
-  target: 'original' | 'pseudonym'
+  target: 'original' | 'pseudonym',
+  activeKey?: string | null
 ): ReactNode[] {
   const matches: {
     start: number
@@ -652,10 +804,15 @@ function highlightText(
   for (const match of matches) {
     if (match.start < cursor) continue
     if (match.start > cursor) out.push(text.slice(cursor, match.start))
+    const matchKey = entityKey(match.entity)
     out.push(
       <mark
         key={`${match.entity.type}-${key++}`}
-        className={`rounded px-1 ring-1 ${entityColorClass(match.entity.type)}`}
+        className={[
+          'rounded px-1 ring-1',
+          entityColorClass(match.entity.type),
+          activeKey === matchKey ? 'outline outline-2 outline-offset-1 outline-emerald-500' : ''
+        ].join(' ')}
         title={`${match.entity.type} -> ${match.entity.pseudonym}`}
       >
         {text.slice(match.start, match.end)}
@@ -668,10 +825,24 @@ function highlightText(
   return out
 }
 
+function previewAnonymizedText(detail: ReviewDocumentDetail, selectedKeys: Set<string>): string {
+  let text = detail.anonymizedText
+  const excluded = detail.entities
+    .filter((entity) => !selectedKeys.has(entityKey(entity)))
+    .sort((a, b) => b.pseudonym.length - a.pseudonym.length)
+
+  for (const entity of excluded) {
+    if (entity.pseudonym.length < 2) continue
+    text = text.split(entity.pseudonym).join(entity.originalText)
+  }
+  return text
+}
+
 function ReviewPreflight({ detail, selectedKeys }: { detail: ReviewDocumentDetail; selectedKeys: Set<string> }): React.JSX.Element {
   const selectedCount = detail.entities.filter((entity) => selectedKeys.has(entityKey(entity))).length
   const exposure = mcpExposureLabel(detail)
   const residualRisk = Math.round(detail.residualRisk * 100)
+  const residualRiskTone: StatusTone = residualRisk >= 50 ? 'danger' : residualRisk >= 20 ? 'warning' : 'neutral'
   const checks: { label: string; value: string; tone: StatusTone }[] = [
     {
       label: 'Entita confermate',
@@ -687,27 +858,40 @@ function ReviewPreflight({ detail, selectedKeys }: { detail: ReviewDocumentDetai
       label: 'Canale MCP/LLM',
       value: exposure,
       tone: mcpExposureTone(exposure)
-    },
-    {
-      label: 'Rischio residuo',
-      value: `${residualRisk}%`,
-      tone: residualRisk >= 50 ? 'danger' : residualRisk >= 20 ? 'warning' : 'neutral'
     }
   ]
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <div className="text-sm font-medium text-slate-900">Prima di approvare</div>
+      <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+        <CheckCircle2 size={16} className="text-blue-600" />
+        Prima di approvare
+      </div>
       <p className="mt-1 text-xs leading-5 text-slate-500">
-        L'approvazione e' locale. La disponibilita' via MCP/LLM dipende anche da sensibilita' e policy.
+        Approvazione locale. MCP/LLM dipende da sensibilita' e policy.
       </p>
-      <div className="mt-3 space-y-2">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {checks.map((check) => (
-          <div key={check.label} className="flex items-start justify-between gap-3 rounded-md border border-slate-100 px-2.5 py-2 text-xs">
+          <div key={check.label} className="min-w-[6rem] flex-1 rounded-md border border-slate-100 px-2 py-1.5 text-xs">
             <span className="font-medium text-slate-700">{check.label}</span>
-            <span className={`rounded-full border px-2 py-0.5 text-right ${statusPillClass(check.tone)}`}>{check.value}</span>
+            <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-right ${statusPillClass(check.tone)}`}>{check.value}</span>
           </div>
         ))}
+      </div>
+      <div className="mt-1.5 rounded-md border border-slate-100 px-2 py-1.5 text-xs">
+        <div className="flex items-start justify-between gap-3">
+          <span className="font-medium text-slate-700">Rischio residuo</span>
+          <span className={`rounded-full border px-2 py-0.5 text-right ${statusPillClass(residualRiskTone)}`}>{residualRisk}%</span>
+        </div>
+        <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] leading-4 text-amber-900">
+          <div className="flex items-center gap-1 font-medium">
+            <AlertTriangle size={12} />
+            Come viene calcolato
+          </div>
+          <p className="mt-1">
+            Contesto residuo, tipi entita e densita. Non e' una probabilita statistica.
+          </p>
+        </div>
       </div>
     </div>
   )
@@ -723,24 +907,28 @@ function SensitivityDecisionPanel({
   const current = detail.sensitivityOverride ?? null
   const choices: {
     decision: 'sensitive' | 'not_sensitive' | null
+    label: string
     title: string
     body: string
     tone: StatusTone
   }[] = [
     {
       decision: 'sensitive',
+      label: 'Sensibile',
       title: 'Sensibile - blocca MCP/LLM',
       body: 'Il documento puo essere approvato localmente, ma resta non disponibile al canale LLM cloud.',
       tone: 'warning'
     },
     {
       decision: 'not_sensitive',
+      label: 'Non sens.',
       title: 'Non sensibile nel contesto',
       body: 'Dopo la review, il testo pseudonimizzato puo diventare disponibile via MCP se la policy lo consente.',
       tone: 'neutral'
     },
     {
       decision: null,
+      label: 'Suggerito',
       title: 'Usa suggerimento AnonyMCP',
       body: 'Mantiene la classificazione suggerita dal motore locale fino a nuova decisione professionale.',
       tone: 'info'
@@ -749,11 +937,14 @@ function SensitivityDecisionPanel({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <h3 className="text-sm font-medium text-slate-900">Sensibilita</h3>
+      <h3 className="flex items-center gap-2 text-sm font-medium text-slate-900">
+        <ShieldCheck size={16} className="text-blue-600" />
+        Sensibilita
+      </h3>
       <p className="mt-1 text-xs leading-5 text-slate-500">
-        AnonyMCP suggerisce; la decisione finale sul contesto e' del professionista.
+        Scegli se resta bloccato o segue la policy MCP.
       </p>
-      <div className="mt-3 grid gap-2">
+      <div className="mt-3 grid gap-2 xl:grid-cols-3">
         {choices.map((choice) => {
           const selected = current === choice.decision
           return (
@@ -761,16 +952,17 @@ function SensitivityDecisionPanel({
               key={choice.title}
               type="button"
               onClick={() => onChange(choice.decision)}
+              aria-label={`${choice.title}. ${choice.body}`}
+              title={choice.body}
               className={[
-                'rounded-md border p-3 text-left text-sm transition',
+                'rounded-md border px-2.5 py-2 text-left text-xs transition',
                 selected ? statusPillClass(choice.tone) : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               ].join(' ')}
             >
               <span className="flex items-start justify-between gap-3">
-                <span className="font-medium">{choice.title}</span>
+                <span className="font-medium">{choice.label}</span>
                 {selected ? <CheckCircle2 size={16} /> : null}
               </span>
-              <span className="mt-1 block text-xs leading-5">{choice.body}</span>
             </button>
           )
         })}
@@ -860,6 +1052,12 @@ function ReviewDetailPanel({
   const originalRef = useRef<HTMLDivElement | null>(null)
   const pseudonymRef = useRef<HTMLDivElement | null>(null)
   const syncingRef = useRef(false)
+  const [activeEntityKey, setActiveEntityKey] = useState<string | null>(null)
+  const selectedEntities = useMemo(
+    () => detail.entities.filter((entity) => selectedKeys.has(entityKey(entity))),
+    [detail.entities, selectedKeys]
+  )
+  const previewText = useMemo(() => previewAnonymizedText(detail, selectedKeys), [detail, selectedKeys])
   const entityTypeCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const entity of detail.entities) counts.set(entity.type, (counts.get(entity.type) ?? 0) + 1)
@@ -889,9 +1087,123 @@ function ReviewDetailPanel({
     }, 0)
   }
 
+  function scrollToText(container: HTMLDivElement | null, haystack: string, needle: string): void {
+    if (!container || needle.length < 2) return
+    const index = haystack.indexOf(needle)
+    if (index < 0) return
+    const ratio = index / Math.max(haystack.length, 1)
+    const maxScroll = container.scrollHeight - container.clientHeight
+    container.scrollTop = ratio * Math.max(maxScroll, 0)
+  }
+
+  function focusEntity(entity: ReviewDocumentDetail['entities'][number]): void {
+    const key = entityKey(entity)
+    setActiveEntityKey(key)
+    scrollToText(originalRef.current, detail.originalText, entity.originalText)
+    scrollToText(pseudonymRef.current, previewText, selectedKeys.has(key) ? entity.pseudonym : entity.originalText)
+  }
+
+  function renderEntityList(): React.JSX.Element {
+    return (
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-medium text-slate-900">Entita' rilevate</h3>
+          <span className="text-xs text-slate-500">{selectedEntities.length}/{detail.entities.length} attive</span>
+        </div>
+        {entityTypeCounts.length ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {entityTypeCounts.map(([type, count]) => (
+              <span key={type} className={`rounded-full px-2.5 py-1 text-xs ring-1 ${entityColorClass(type as ReviewDocumentDetail['entities'][number]['type'])}`}>
+                {type} {count}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="max-h-96 overflow-auto rounded-md border border-slate-200 bg-white">
+          {detail.entities.length ? (
+            detail.entities.map((entity) => {
+              const key = entityKey(entity)
+              const selected = selectedKeys.has(key)
+              const active = activeEntityKey === key
+              return (
+                <div
+                  key={key}
+                  className={[
+                    'flex items-start gap-3 border-b border-slate-100 p-3 last:border-b-0',
+                    selected ? 'bg-white' : 'bg-slate-50 opacity-70',
+                    active ? 'ring-2 ring-inset ring-emerald-500' : ''
+                  ].join(' ')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => onToggleEntity(key)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
+                    aria-label={`${selected ? 'Escludi' : 'Includi'} ${entity.originalText}`}
+                  />
+                  <button type="button" onClick={() => focusEntity(entity)} className="min-w-0 flex-1 text-left">
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className={`rounded px-1.5 py-0.5 text-xs ring-1 ${entityColorClass(entity.type)}`}>
+                        {entity.type}
+                      </span>
+                      <span className={['block truncate text-sm font-medium', selected ? 'text-slate-900' : 'text-slate-500 line-through'].join(' ')}>
+                        {entity.originalText}
+                      </span>
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      {selected ? entity.pseudonym : 'esclusa dalla pseudonimizzazione'} - {entity.source} - {entity.occurrences} occ.
+                    </span>
+                  </button>
+                </div>
+              )
+            })
+          ) : (
+            <div className="p-4 text-sm text-slate-500">Nessuna entita' rilevata. Controlla comunque il testo: il riconoscimento automatico non e' perfetto.</div>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+          <h3 className="text-sm font-medium text-slate-900">Aggiungi entita'</h3>
+          <input
+            value={manualText}
+            onChange={(event) => onManualTextChange(event.target.value)}
+            placeholder="Testo esatto nel documento"
+            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+          <select
+            value={manualType}
+            onChange={(event) => onManualTypeChange(event.target.value as typeof manualType)}
+            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            {ENTITY_TYPES.map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={onAddManualEntity}
+            disabled={actionBusy || manualText.trim().length === 0}
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus size={16} />
+            Aggiungi
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <h3 className="text-sm font-medium text-slate-900">Checklist manuale</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Verifica persone, codici fiscali/P.IVA, indirizzi, dati bancari, email/PEC/telefoni,
+            numeri di ruolo o protocolli e altri riferimenti identificativi.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <section className="rounded-lg border border-slate-200 bg-white">
-      <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+    <section className="flex min-h-[34rem] flex-col rounded-lg border border-slate-200 bg-white xl:h-[calc(100vh-8rem)] xl:overflow-hidden">
+      <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-3">
         <div className="min-w-0">
           <h2 className="truncate font-medium text-slate-900">{detail.fileName}</h2>
           <div className="mt-1 text-sm text-slate-500">
@@ -901,8 +1213,9 @@ function ReviewDetailPanel({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
         >
+          <ArrowLeft size={16} />
           Torna alla dashboard
         </button>
       </div>
@@ -911,148 +1224,90 @@ function ReviewDetailPanel({
         <DocumentStatusStrip doc={detail} />
       </div>
 
-      <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_22rem]">
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-slate-900">Originale locale</div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Contiene dati reali. Serve solo per la review sul computer.</p>
-            </div>
-            <StatusPill label="Solo locale" tone="local" icon={<Lock size={13} />} />
-          </div>
-          <div
-            ref={originalRef}
-            onScroll={(event) => syncScroll(event.currentTarget, pseudonymRef.current)}
-            className="h-[28rem] overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800"
-          >
-            {highlightText(detail.originalText, detail.entities, 'original')}
-          </div>
-        </div>
-        <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-slate-900">Pseudonimizzato</div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Questo e' il testo candidato al canale MCP/LLM dopo approvazione e policy.</p>
-            </div>
-            <StatusPill label="Candidato MCP" tone="info" icon={<Cloud size={13} />} />
-          </div>
-          <div
-            ref={pseudonymRef}
-            onScroll={(event) => syncScroll(event.currentTarget, originalRef.current)}
-            className="h-[28rem] overflow-auto whitespace-pre-wrap rounded-md border border-blue-100 bg-white p-3 font-mono text-xs leading-5 text-slate-800"
-          >
-            {highlightText(detail.anonymizedText, detail.entities, 'pseudonym')}
-          </div>
-        </div>
-        <aside className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Decisioni</h3>
+      <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,1.15fr)_minmax(0,0.9fr)] xl:grid-cols-[minmax(15rem,0.9fr)_minmax(22rem,1.4fr)_minmax(16rem,0.95fr)_minmax(13rem,0.75fr)]">
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <ListChecks size={16} className="text-blue-600" />
+              Decisioni
+            </h3>
             <p className="mt-1 text-xs leading-5 text-slate-500">
               Prima controlla le entita', poi applica la selezione e approva localmente.
             </p>
+            <div className="mt-2 grid gap-1 text-[11px] leading-4">
+              {['Entita', 'Anteprima', 'Approva', 'MCP/LLM'].map((step, index) => (
+                <div key={step} className="grid grid-cols-[1fr_auto] items-center gap-1">
+                  <div className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-center font-medium text-blue-800">
+                    {step}
+                  </div>
+                  {index < 3 ? <ArrowRight size={13} className="rotate-90 text-slate-400" /> : <span />}
+                </div>
+              ))}
+            </div>
           </div>
           <ReviewPreflight detail={detail} selectedKeys={selectedKeys} />
           <SensitivityDecisionPanel detail={detail} onChange={requestSensitivityChange} />
-          {actionError ? (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</div>
-          ) : null}
-          <button
-            type="button"
-            onClick={onApprove}
-            disabled={actionBusy}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-            Applica selezione e approva localmente
-          </button>
+          <div className="flex flex-col justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+            {actionError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</div>
+            ) : (
+              <p className="text-xs leading-5 text-slate-500">
+                Conferma dopo originale, anteprima ed entita' attive.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={onApprove}
+              disabled={actionBusy}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+              Applica selezione e approva localmente
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid flex-1 gap-4 p-4 md:grid-cols-[minmax(0,1fr)_22rem] xl:min-h-0">
+        <div className="grid gap-4 xl:min-h-0 xl:grid-rows-2">
+          <div className="flex flex-col rounded-lg border border-slate-200 bg-white p-3 xl:min-h-0">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Originale locale</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Contiene dati reali. Serve solo per la review sul computer.</p>
+              </div>
+              <StatusPill label="Solo locale" tone="local" icon={<Lock size={13} />} />
+            </div>
+            <div
+              ref={originalRef}
+              onScroll={(event) => syncScroll(event.currentTarget, pseudonymRef.current)}
+              className="h-72 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800 xl:min-h-0 xl:flex-1"
+            >
+              {highlightText(detail.originalText, selectedEntities, 'original', activeEntityKey)}
+            </div>
+          </div>
+          <div className="flex flex-col rounded-lg border border-blue-100 bg-blue-50/40 p-3 xl:min-h-0">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Pseudonimizzato</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Anteprima coerente con le entita' selezionate qui a destra.</p>
+              </div>
+              <StatusPill label="Candidato MCP" tone="info" icon={<Cloud size={13} />} />
+            </div>
+            <div
+              ref={pseudonymRef}
+              onScroll={(event) => syncScroll(event.currentTarget, originalRef.current)}
+              className="h-72 overflow-auto whitespace-pre-wrap rounded-md border border-blue-100 bg-white p-3 font-mono text-xs leading-5 text-slate-800 xl:min-h-0 xl:flex-1"
+            >
+              {highlightText(previewText, selectedEntities, 'pseudonym', activeEntityKey)}
+            </div>
+          </div>
+        </div>
+        <aside className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4 xl:min-h-0 xl:overflow-auto">
+          {renderEntityList()}
         </aside>
       </div>
 
-      <div className="grid gap-4 border-t border-slate-100 p-5 lg:grid-cols-[1fr_320px]">
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-slate-900">Entita' rilevate da confermare</h3>
-            <span className="text-xs text-slate-500">Rischio residuo {Math.round(detail.residualRisk * 100)}%</span>
-          </div>
-          {entityTypeCounts.length ? (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {entityTypeCounts.map(([type, count]) => (
-                <span key={type} className={`rounded-full px-2.5 py-1 text-xs ring-1 ${entityColorClass(type as ReviewDocumentDetail['entities'][number]['type'])}`}>
-                  {type} {count}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          <div className="max-h-[32rem] overflow-auto rounded-md border border-slate-200">
-            {detail.entities.length ? (
-              detail.entities.map((entity) => {
-                const key = entityKey(entity)
-                return (
-                  <label key={key} className="flex cursor-pointer items-start gap-3 border-b border-slate-100 p-3 last:border-b-0">
-                    <input
-                      type="checkbox"
-                      checked={selectedKeys.has(key)}
-                      onChange={() => onToggleEntity(key)}
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className={`rounded px-1.5 py-0.5 text-xs ring-1 ${entityColorClass(entity.type)}`}>
-                          {entity.type}
-                        </span>
-                        <span className="block truncate text-sm font-medium text-slate-900">{entity.originalText}</span>
-                      </span>
-                      <span className="mt-1 block text-xs text-slate-500">
-                        {entity.pseudonym} - {entity.source} - {entity.occurrences} occ.
-                      </span>
-                    </span>
-                  </label>
-                )
-              })
-            ) : (
-              <div className="p-4 text-sm text-slate-500">Nessuna entita' rilevata. Controlla comunque il testo: il riconoscimento automatico non e' perfetto.</div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-lg border border-slate-200 p-3">
-            <h3 className="text-sm font-medium text-slate-900">Aggiungi entita'</h3>
-            <input
-              value={manualText}
-              onChange={(event) => onManualTextChange(event.target.value)}
-              placeholder="Testo esatto nel documento"
-              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            />
-            <select
-              value={manualType}
-              onChange={(event) => onManualTypeChange(event.target.value as typeof manualType)}
-              className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-            >
-              {ENTITY_TYPES.map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={onAddManualEntity}
-              disabled={actionBusy || manualText.trim().length === 0}
-              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Plus size={16} />
-              Aggiungi
-            </button>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <h3 className="text-sm font-medium text-slate-900">Checklist manuale</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              Verifica persone, codici fiscali/P.IVA, indirizzi, dati bancari, email/PEC/telefoni,
-              numeri di ruolo o protocolli e altri riferimenti identificativi.
-            </p>
-          </div>
-        </div>
-      </div>
     </section>
   )
 }
@@ -1121,7 +1376,11 @@ function Dashboard({
   sensitiveDocs,
   pendingWrites,
   scanningFolder,
+  scanProgress,
+  scanSummary,
   onScan,
+  onScanAll,
+  onCancelScan,
   onRefresh
 }: {
   status: AppStatus
@@ -1130,7 +1389,11 @@ function Dashboard({
   sensitiveDocs: CloudBlockedSensitiveDocument[]
   pendingWrites: PendingWriteItem[]
   scanningFolder: string | null
+  scanProgress: ScanProgress | null
+  scanSummary: ScanSummary | null
   onScan: (folderId: string) => void
+  onScanAll: () => void
+  onCancelScan: () => void
   onRefresh: () => Promise<void>
 }): React.JSX.Element {
   const [activeRef, setActiveRef] = useState<{ folderId: string; docId: string } | null>(null)
@@ -1143,12 +1406,22 @@ function Dashboard({
   const [actionError, setActionError] = useState<string | null>(null)
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all')
   const [activitySearch, setActivitySearch] = useState('')
+  const [showAllPractices, setShowAllPractices] = useState(false)
   const totals = dashboard?.totals
+  const practices = dashboard?.practices ?? []
+  const practiceCount = practices.length
+  const alreadyManagedPractices = useMemo(() => practices.filter(isPracticeAlreadyManaged), [practices])
+  const hiddenManagedCount = alreadyManagedPractices.length
+  const visiblePractices = useMemo(
+    () => showAllPractices ? practices : practices.filter((practice) => !isPracticeAlreadyManaged(practice)),
+    [practices, showAllPractices]
+  )
+  const scanBusy = scanProgress !== null
   const cards = useMemo(
     () => [
       { label: 'Pratiche configurate', value: totals?.practices ?? status.configuredFolders, icon: FolderPlus },
       { label: 'Documenti da rivedere', value: totals?.reviewRequired ?? 0, icon: ListChecks },
-      { label: 'Bloccati MCP/LLM', value: totals?.cloudBlockedSensitiveDocs ?? 0, icon: FileWarning },
+      { label: 'Bloccati MCP/LLM', value: totals?.cloudBlockedSensitiveDocs ?? 0, icon: CircleStop },
       { label: 'Bozze LLM in attesa', value: totals?.pendingWrites ?? 0, icon: Lock }
     ],
     [status.configuredFolders, totals]
@@ -1209,8 +1482,7 @@ function Dashboard({
   }, [pendingWrites, reviewDocs, sensitiveDocs])
   const filteredActivityRows = useMemo(() => {
     const needle = activitySearch.trim().toLowerCase()
-    return activityRows
-      .filter((row) => {
+    return activityRows.filter((row) => {
         if (activityFilter === 'review' && !row.isReview) return false
         if (activityFilter === 'sensitive' && !row.isSensitive) return false
         if (activityFilter === 'writes' && row.kind !== 'write') return false
@@ -1221,8 +1493,15 @@ function Dashboard({
           .toLowerCase()
           .includes(needle)
       })
-      .slice(0, 30)
   }, [activityFilter, activityRows, activitySearch])
+  const visibleActivityRows = useMemo(() => filteredActivityRows.slice(0, 30), [filteredActivityRows])
+  const activityFilterCounts = useMemo(() => ({
+    all: activityRows.length,
+    review: activityRows.filter((row) => row.isReview).length,
+    sensitive: activityRows.filter((row) => row.isSensitive).length,
+    writes: activityRows.filter((row) => row.kind === 'write').length,
+    approved: activityRows.filter((row) => row.isApproved).length
+  }), [activityRows])
 
   async function openReviewDocument(folderId: string, docId: string): Promise<void> {
     setActionBusy(true)
@@ -1431,49 +1710,127 @@ function Dashboard({
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-            <h2 className="font-medium text-slate-900">Pratiche</h2>
-            <span className="text-sm text-slate-500">{dashboard?.practices.length ?? 0} configurate</span>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div>
+              <h2 className="font-medium text-slate-900">Pratiche</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Mostro prima le pratiche da gestire. Scansione locale: legge le cartelle e prepara documenti per review, senza esporre nulla via MCP/LLM.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="text-sm text-slate-500">{visiblePractices.length} visibili / {practiceCount} configurate</span>
+              <button
+                type="button"
+                aria-pressed={showAllPractices}
+                onClick={() => setShowAllPractices((current) => !current)}
+                disabled={practiceCount === 0}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {showAllPractices ? 'Nascondi gia\' gestite' : `Mostra tutte${hiddenManagedCount ? ` (${hiddenManagedCount} gia' gestite)` : ''}`}
+              </button>
+              <button
+                type="button"
+                aria-label="Scansiona tutte le pratiche configurate localmente"
+                onClick={onScanAll}
+                disabled={scanBusy || practiceCount === 0}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {scanProgress?.mode === 'all' || scanProgress?.mode === 'auto' ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
+                {scanProgress?.mode === 'all' || scanProgress?.mode === 'auto' ? 'Scansione...' : 'Scansiona tutto'}
+              </button>
+            </div>
           </div>
-          <div className="divide-y divide-slate-100">
-            {dashboard?.practices.length ? (
-              dashboard.practices.map((practice) => (
-                <div key={practice.folderId} className="grid gap-3 px-5 py-4 lg:grid-cols-[1fr_auto]">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-slate-900">{practice.label}</span>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        {practice.folderId}
-                      </span>
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                        {practice.matter}
-                      </span>
-                    </div>
-                    <div className="mt-1 truncate text-sm text-slate-500">Path locale: {compactPath(practice.path)}</div>
-                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
-                      <span>{practice.reviewRequired} da rivedere</span>
-                      <span>{practice.approved} approvati localmente</span>
-                      <span>{practice.exposed} disponibili via MCP/LLM</span>
-                      <span>{practice.cloudBlockedSensitiveDocs} bloccati MCP/LLM</span>
-                    </div>
-                  </div>
+
+          {scanProgress ? (
+            <div role="status" aria-live="polite" className="border-b border-blue-100 bg-blue-50 px-5 py-3 text-sm text-blue-900">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  {scanProgress.mode === 'auto'
+                    ? `Scansione iniziale locale ${scanProgress.currentIndex} di ${scanProgress.total}: pratica ${scanProgress.currentFolderId}. Cerco nuovi documenti da autorizzare.`
+                    : scanProgress.mode === 'all'
+                      ? `Scansione locale ${scanProgress.currentIndex} di ${scanProgress.total}: pratica ${scanProgress.currentFolderId}. I conteggi si aggiornano al termine.`
+                    : `Scansione locale pratica ${scanProgress.currentFolderId}.`}
+                  {scanProgress.cancelRequested ? ' Stop richiesto: mi fermo dopo la pratica corrente.' : ''}
+                </span>
+                {scanProgress.mode !== 'single' && !scanProgress.cancelRequested ? (
                   <button
                     type="button"
-                    onClick={() => onScan(practice.folderId)}
-                    disabled={scanningFolder === practice.folderId}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                    onClick={onCancelScan}
+                    className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-100"
                   >
-                    {scanningFolder === practice.folderId ? (
-                      <Loader2 className="animate-spin" size={16} />
-                    ) : (
-                      <Play size={16} />
-                    )}
-                    Scansiona
+                    Ferma dopo questa pratica
                   </button>
-                </div>
-              ))
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {scanSummary ? (
+            <div
+              className={[
+                'border-b px-5 py-3 text-sm',
+                scanSummary.tone === 'success' ? 'border-green-100 bg-green-50 text-green-800' : '',
+                scanSummary.tone === 'warning' ? 'border-amber-100 bg-amber-50 text-amber-900' : '',
+                scanSummary.tone === 'danger' ? 'border-red-100 bg-red-50 text-red-800' : ''
+              ].join(' ')}
+            >
+              <div>{scanSummary.message}</div>
+              {scanSummary.issues?.length ? (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                  {scanSummary.issues.slice(0, 6).map((issue) => <li key={issue}>{issue}</li>)}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="max-h-[34rem] overflow-auto p-4">
+            {practiceCount === 0 ? (
+              <div className="px-1 py-8 text-sm text-slate-500">Nessuna pratica caricata.</div>
+            ) : visiblePractices.length ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {visiblePractices.map((practice) => {
+                  const currentScan = scanningFolder === practice.folderId
+                  return (
+                    <article key={practice.folderId} className="flex min-h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-slate-900">{practice.label}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                            {practice.folderId}
+                          </span>
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                            {practice.matter}
+                          </span>
+                        </div>
+                        <div className="mt-2 truncate text-sm text-slate-500" title={practice.path}>Path locale: {compactPath(practice.path)}</div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          <span className="rounded-md border border-amber-100 bg-amber-50 px-2 py-1 text-amber-800">{practice.reviewRequired} da rivedere</span>
+                          <span className="rounded-md border border-green-100 bg-green-50 px-2 py-1 text-green-800">{practice.approved} approvati</span>
+                          <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 text-blue-800">{practice.exposed} via MCP/LLM</span>
+                          <span className="rounded-md border border-red-100 bg-red-50 px-2 py-1 text-red-800">{practice.cloudBlockedSensitiveDocs} bloccati</span>
+                          {practice.pendingWrites ? (
+                            <span className="rounded-md border border-violet-100 bg-violet-50 px-2 py-1 text-violet-800">{practice.pendingWrites} bozze</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={currentScan ? `Scansione in corso per pratica ${practice.folderId}` : `Scansiona pratica ${practice.folderId}`}
+                        onClick={() => onScan(practice.folderId)}
+                        disabled={scanBusy}
+                        className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                      >
+                        {currentScan ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
+                        {currentScan ? 'Scansione...' : 'Scansiona'}
+                      </button>
+                    </article>
+                  )
+                })}
+              </div>
             ) : (
-              <div className="px-5 py-8 text-sm text-slate-500">Nessuna pratica caricata.</div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-600">
+                Nessuna pratica richiede attenzione. Usa "Mostra tutte" per vedere anche quelle gia' gestite.
+              </div>
             )}
           </div>
         </section>
@@ -1500,6 +1857,7 @@ function Dashboard({
               </p>
             </div>
             <input
+              aria-label="Cerca documento o pratica nelle attivita'"
               value={activitySearch}
               onChange={(event) => setActivitySearch(event.target.value)}
               placeholder="Cerca documento o pratica"
@@ -1512,78 +1870,100 @@ function Dashboard({
                 key={filter.id}
                 type="button"
                 onClick={() => setActivityFilter(filter.id)}
+                aria-pressed={activityFilter === filter.id}
                 className={[
-                  'rounded-md px-3 py-1.5 text-sm',
+                  'inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition',
                   activityFilter === filter.id
-                    ? 'bg-blue-600 text-white'
-                    : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+                    ? ACTIVITY_FILTER_CLASSES[filter.id].active
+                    : ACTIVITY_FILTER_CLASSES[filter.id].inactive
                 ].join(' ')}
               >
-                {filter.label}
+                <span>{filter.label}</span>
+                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[11px] leading-none text-current ring-1 ring-current/20">
+                  {activityFilterCounts[filter.id]}
+                </span>
               </button>
             ))}
           </div>
-          <div className="overflow-auto">
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="bg-slate-50 text-left text-xs font-medium uppercase text-slate-500">
-                <tr>
-                  <th className="px-5 py-3">Pratica</th>
-                  <th className="px-5 py-3">Documento</th>
-                  <th className="px-5 py-3">Review</th>
-                  <th className="px-5 py-3">Sensibilita'</th>
-                  <th className="px-5 py-3">MCP/LLM</th>
-                  <th className="px-5 py-3 text-right">Azione</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredActivityRows.length ? (
-                  filteredActivityRows.map((row) => (
-                    <tr key={row.key}>
-                      <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-900">{row.label}</td>
-                      <td className="max-w-xs truncate px-5 py-3 text-slate-800">{row.document}</td>
-                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{row.review}</td>
-                      <td className="whitespace-nowrap px-5 py-3">
-                        <span className={[
-                          'rounded-full px-2 py-1 text-xs',
-                          row.isSensitive ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'
-                        ].join(' ')}>
-                          {row.sensitivity}
+          <div>
+            <div className="hidden grid-cols-[5rem_minmax(14rem,1.7fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_5.5rem] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-medium uppercase text-slate-500 lg:grid">
+              <div>Pratica</div>
+              <div>Documento</div>
+              <div>Review</div>
+              <div>Sensibilita'</div>
+              <div>MCP/LLM</div>
+              <div className="text-right">Azione</div>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {visibleActivityRows.length ? (
+                visibleActivityRows.map((row) => (
+                  <div
+                    key={row.key}
+                    className="grid gap-3 px-5 py-4 text-sm lg:grid-cols-[5rem_minmax(14rem,1.7fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(10rem,1fr)_5.5rem] lg:items-start"
+                  >
+                    <div>
+                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Pratica</div>
+                      <div className="font-medium text-slate-900">{row.label}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Documento</div>
+                      <div className="break-words leading-5 text-slate-800" title={row.document}>{row.document}</div>
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Review</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className={`rounded-full border px-2 py-1 text-xs font-medium ${activityReviewBadgeClass(row)}`}>
+                          {row.review}
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3">
-                        <span className={`rounded-full border px-2 py-1 text-xs ${statusPillClass(row.kind === 'write' ? 'local' : mcpExposureTone(row.cloud))}`}>
-                          {row.cloud}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (row.kind === 'write' && row.relPath) {
-                              void openPendingWrite(row.folderId, row.relPath)
-                            } else if (row.docId) {
-                              void openReviewDocument(row.folderId, row.docId)
-                            }
-                          }}
-                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-                        >
-                          {row.action}
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-8 text-sm text-slate-500">
-                      Nessuna attivita' per il filtro selezionato.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                        {row.isSensitive ? (
+                          <span className={`rounded-full border px-2 py-1 text-xs font-medium ${ACTIVITY_FILTER_CLASSES.sensitive.badge}`}>
+                            Sensibile
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">Sensibilita'</div>
+                      <span className={[
+                        'inline-flex max-w-full whitespace-normal rounded-full px-2 py-1 text-xs leading-4',
+                        row.isSensitive ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-600'
+                      ].join(' ')}>
+                        {row.sensitivity}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs font-medium uppercase text-slate-400 lg:hidden">MCP/LLM</div>
+                      <span className={`inline-flex max-w-full whitespace-normal rounded-full border px-2 py-1 text-xs leading-4 ${statusPillClass(row.kind === 'write' ? 'local' : mcpExposureTone(row.cloud))}`}>
+                        {row.cloud}
+                      </span>
+                    </div>
+                    <div className="flex lg:justify-end">
+                      <button
+                        type="button"
+                        aria-label={`${row.action} ${row.document} nella pratica ${row.label}`}
+                        onClick={() => {
+                          if (row.kind === 'write' && row.relPath) {
+                            void openPendingWrite(row.folderId, row.relPath)
+                          } else if (row.docId) {
+                            void openReviewDocument(row.folderId, row.docId)
+                          }
+                        }}
+                        className="inline-flex min-w-20 justify-center rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                      >
+                        {row.action}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-8 text-sm text-slate-500">
+                  Nessuna attivita' per il filtro selezionato.
+                </div>
+              )}
+            </div>
           </div>
           <div className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-            Mostrate {filteredActivityRows.length} di {activityRows.length} attivita'. Usa i filtri per restringere la lista.
+            Mostrate {visibleActivityRows.length} di {filteredActivityRows.length} risultati filtrati ({activityRows.length} attivita' totali). Usa i filtri per restringere la lista.
           </div>
         </section>
       </div>
@@ -1601,10 +1981,14 @@ export default function App(): React.JSX.Element {
     loading,
     error,
     scanningFolder,
+    scanProgress,
+    scanSummary,
     importingMode,
     lastImport,
     refresh,
     scanPractice,
+    scanAllPractices,
+    requestScanCancel,
     selectAndImportFolders,
     importDroppedFolders
   } = useAppModel()
@@ -1653,7 +2037,11 @@ export default function App(): React.JSX.Element {
           sensitiveDocs={sensitiveDocs}
           pendingWrites={pendingWrites}
           scanningFolder={scanningFolder}
+          scanProgress={scanProgress}
+          scanSummary={scanSummary}
           onScan={(folderId) => void scanPractice(folderId)}
+          onScanAll={() => void scanAllPractices()}
+          onCancelScan={requestScanCancel}
           onRefresh={refresh}
         />
       ) : (

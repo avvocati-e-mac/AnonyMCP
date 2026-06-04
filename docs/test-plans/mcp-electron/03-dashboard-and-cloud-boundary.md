@@ -10,7 +10,7 @@ Verificare che la dashboard mostri quale config locale sta usando e quali folder
 risultano configurati.
 
 Strumenti mcp-electron:
-`get_body_text`, `find_elements`.
+`get_body_text`, `find_elements`, `eval` per misure di overflow se necessario.
 
 Dati:
 Config sintetica.
@@ -21,12 +21,15 @@ Passi:
 2. Leggere il blocco superiore.
 3. Verificare la presenza di `Config UI`, `Hash config`, `Folder MCP locali`.
 4. Verificare che folderId/label siano opachi, per esempio `400f`, `215s`, `400F`, `215S`.
+5. Con config sintetica estesa, verificare che una lista di almeno 12 folder resti leggibile.
 
 Atteso:
 La dashboard consente di capire quale configurazione locale e' caricata.
 
 Red team:
 Avviare con config diversa da quella attesa e verificare che il test lo rilevi.
+Con molte pratiche verificare che la lista folder non spinga la dashboard fuori viewport o in
+overflow orizzontale.
 
 Fallimento grave se:
 La UI non mostra alcuna informazione sulla config locale o mostra label identificanti nel campo
@@ -126,7 +129,7 @@ MCP/LLM.
 ## DASH-005 - KPI coerenti con le righe
 
 Scopo:
-Verificare che i contatori alti siano coerenti con la tabella attivita'.
+Verificare che i contatori alti siano coerenti con la lista attivita'.
 
 Strumenti mcp-electron:
 `get_body_text`, `click_by_text`, `fill_input`.
@@ -141,7 +144,8 @@ Passi:
 3. Applicare filtro `Da rivedere`.
 4. Applicare filtro `Sensibili`.
 5. Applicare filtro `Bozze` se presenti.
-6. Confrontare il senso dei KPI con le righe mostrate.
+6. Verificare che i filtri mostrino conteggi coerenti con le righe filtrate.
+7. Confrontare il senso dei KPI con le righe mostrate.
 
 Atteso:
 I KPI non contraddicono la tabella e i filtri aiutano a trovare il lavoro da fare.
@@ -172,6 +176,8 @@ Passi:
 2. Identificare colonne `Review`, `Sensibilita'`, `MCP/LLM`.
 3. Verificare che `Approvato localmente` non equivalga automaticamente a `Disponibile via MCP/LLM`.
 4. Verificare che i sensibili appaiano `Bloccato MCP/LLM` o equivalente.
+5. Verificare che i badge `Da rivedere`, `Sensibile`, `Bozza` e `Approvato localmente` siano
+   testuali e non solo cromatici.
 
 Atteso:
 La dashboard separa lo stato locale dallo stato di esposizione MCP/LLM.
@@ -189,7 +195,7 @@ Scopo:
 Verificare che l'utente riceva feedback quando avvia la scansione.
 
 Strumenti mcp-electron:
-`click_by_text`, `wait_for_text`, `get_body_text`.
+`click_by_text`, `wait_for_text`, `get_body_text`, `debug_elements`.
 
 Dati:
 Pratiche sintetiche.
@@ -200,6 +206,9 @@ Passi:
 2. Osservare se il pulsante mostra stato occupato.
 3. Attendere aggiornamento dashboard.
 4. Verificare che compaiano documenti da rivedere.
+5. Con molte pratiche, usare `debug_elements` e verificare che ogni pulsante abbia un label
+   specifico, per esempio `Scansiona pratica 300F`.
+6. Durante una scansione, verificare che gli altri pulsanti `Scansiona` siano disabilitati.
 
 Atteso:
 La UI comunica che la scansione e' in corso e poi mostra un risultato.
@@ -210,3 +219,140 @@ confuso.
 
 Fallimento grave se:
 La scansione avviene senza feedback o lascia la dashboard in uno stato incoerente.
+
+## DASH-008 - Molte pratiche e nomi documento lunghi
+
+Scopo:
+Verificare che la dashboard resti leggibile quando ci sono molte pratiche e nomi documento lunghi.
+
+Strumenti mcp-electron:
+`get_body_text`, `eval`, `take_screenshot` solo su sintetico.
+
+Dati:
+Config sintetica con almeno 12 pratiche e un documento con nome lungo.
+
+Passi:
+
+1. Aprire dashboard con config sintetica estesa.
+2. Verificare che `Pratiche` mostri le pratiche da gestire in griglia multi-colonna quando lo spazio lo consente.
+3. Verificare che il contenitore resti scrollabile e che la lettura segua l'ordine DOM/visivo.
+4. Scansionare le pratiche extra.
+5. Verificare che la lista `Attivita'` mostri i documenti delle pratiche extra.
+6. Verificare che un nome lungo, per esempio `Tizio vs Caio Comparsa...`, vada a capo senza
+   nascondere il pulsante `Apri`.
+7. Verificare con `document.documentElement.scrollWidth <= document.documentElement.clientWidth`
+   che non ci sia overflow orizzontale.
+8. Ridimensionare: finestra stretta = 1 colonna, media = 2 colonne, larga = 3 colonne.
+
+Atteso:
+Molte pratiche e nomi lunghi non rompono la dashboard; le azioni restano visibili.
+
+Red team:
+Ridimensionare la finestra e controllare se il nome documento invade le colonne stato o azione.
+Verificare anche che le card multi-colonna non rendano ambiguo il rapporto tra path locale,
+conteggi review e stato MCP/LLM.
+
+Fallimento grave se:
+Il pulsante `Apri` sparisce, la pagina richiede scroll orizzontale o una pratica configurata non e'
+raggiungibile dalla UI.
+
+## DASH-009 - Scansiona tutto sequenziale
+
+Scopo:
+Verificare che la scansione di tutte le pratiche riduca lavoro ripetitivo senza cambiare il confine
+locale/review/MCP.
+
+Strumenti mcp-electron:
+`click_by_text`, `wait_for_text`, `get_body_text`, `debug_elements`.
+
+Dati:
+Config sintetica con almeno 12 pratiche.
+
+Passi:
+
+1. Aprire dashboard con molte pratiche configurate.
+2. Cliccare `Scansiona tutto`.
+3. Verificare la presenza di un messaggio di avanzamento, per esempio `Scansione locale 1 di 12`.
+4. Verificare che i pulsanti di scansione singola siano disabilitati durante la scansione.
+5. Verificare che il testo dica che la scansione e' locale e non espone nulla via MCP/LLM.
+6. Se la scansione dura abbastanza, cliccare `Ferma dopo questa pratica` e verificare che il copy
+   prometta stop dopo la pratica corrente, non interruzione immediata.
+7. Attendere la fine e verificare che i conteggi della dashboard vengano aggiornati.
+
+Atteso:
+La scansione bulk usa le stesse regole della scansione singola, procede in modo sequenziale e lascia
+i documenti nuovi in review.
+
+Red team:
+Provare doppi click su `Scansiona tutto` e su `Scansiona` durante la scansione; non devono partire
+scansioni parallele. Verificare che il copy non suggerisca approvazione o esposizione automatica.
+
+Fallimento grave se:
+`Scansiona tutto` rende disponibili documenti via MCP/LLM senza review, avvia scansioni parallele o
+mostra un successo generico che fa pensare a pubblicazione verso il cloud.
+
+## DASH-010 - Pratiche gia' gestite nascoste di default
+
+Scopo:
+Ridurre rumore nella dashboard senza far sparire le pratiche configurate.
+
+Strumenti mcp-electron:
+`get_body_text`, `click_by_text`, `debug_elements`.
+
+Dati:
+Config sintetica con almeno una pratica senza documenti da rivedere, senza bloccati MCP/LLM e senza
+bozze pendenti.
+
+Passi:
+
+1. Aprire dashboard.
+2. Verificare che la sezione `Pratiche` mostri un conteggio tipo `X visibili / Y configurate`.
+3. Verificare che le pratiche con review, bloccati MCP/LLM o bozze restino visibili.
+4. Verificare che pratiche gia' gestite siano nascoste di default.
+5. Cliccare `Mostra tutte`.
+6. Verificare che le pratiche gia' gestite riappaiano.
+7. Cliccare `Nascondi gia' gestite` e verificare che il filtro torni attivo.
+
+Atteso:
+Il filtro riduce rumore ma rende sempre evidente il totale delle pratiche configurate.
+
+Red team:
+Verificare che una pratica con documenti sensibili bloccati non venga nascosta. Verificare che
+`Scansiona tutto` continui a riferirsi a tutte le pratiche configurate, non solo a quelle visibili.
+
+Fallimento grave se:
+Il filtro fa credere che pratiche configurate siano state rimosse o nasconde pratiche con documenti
+bloccati MCP/LLM.
+
+## DASH-011 - Auto-scan iniziale locale
+
+Scopo:
+Verificare che all'avvio l'app cerchi nuovi documenti locali da autorizzare senza confondere scan e
+approvazione.
+
+Strumenti mcp-electron:
+`wait_for_text`, `get_body_text`, `debug_elements`.
+
+Dati:
+Config sintetica; opzionale: aggiungere un nuovo `.txt` sintetico prima di avviare l'app.
+
+Passi:
+
+1. Avviare app con config valida.
+2. Attendere la dashboard.
+3. Verificare la comparsa di `Scansione iniziale locale` o del riepilogo finale della scansione.
+4. Verificare che il copy dica che nulla viene esposto via MCP/LLM senza review.
+5. Verificare che i pulsanti di scansione siano disabilitati durante l'auto-scan.
+6. Se esiste un nuovo documento sintetico, verificare che appaia come `Da rivedere` e non come
+   `Disponibile via MCP/LLM`.
+
+Atteso:
+L'auto-scan aggiorna la dashboard e lascia i nuovi documenti in review/quarantena.
+
+Red team:
+Cliccare `Scansiona tutto` durante auto-scan: non devono partire scansioni parallele. Verificare che
+il messaggio non usi parole come pubblicato, sincronizzato col cloud o approvato automaticamente.
+
+Fallimento grave se:
+Un nuovo documento diventa disponibile via MCP/LLM senza review o l'auto-scan blocca la UI senza
+spiegazione.
