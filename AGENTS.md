@@ -56,6 +56,8 @@ La sicurezza viene prima dell'ergonomia. Ogni modifica va verificata contro ques
 ```bash
 npm install
 npm run build        # tsc → dist/
+npm run app:build    # build Electron/Vite → out/
+npm run app:dist:mac # build DMG macOS beta/finale secondo package.json
 npm test             # vitest (tutta la suite)
 npm run typecheck    # tsc --noEmit
 npm run gen:fixtures # rigenera i documenti sintetici di test
@@ -109,6 +111,9 @@ una decisione ADR esistente è un errore critico.
   multi-modello** → [development-process](docs/agent-guides/development-process.md).
 - Prima di committare: `npm run typecheck` e `npm test` verdi; nessun dato reale nei
   fixture/commit (`.gitignore`: `*.anonymcp`, `anonymcp.config.json`, indici).
+- **Release/update**: beta pubbliche = `x.y.z-beta.N` e GitHub `pre-release`; finali = `x.y.z`
+  solo dopo approvazione umana della beta corrispondente e senza modifiche funzionali nuove. Guida:
+  [release-and-update-guidelines](docs/agent-guides/release-and-update-guidelines.md).
 - **Chiusura sessione = decision log esplicito**: prima della risposta finale verifica se durante
   la sessione sono state prese decisioni di prodotto/sicurezza/processo. Se sì, devono essere
   salvate nel documento canonico adatto (ADR per decisioni vincolanti, ROADMAP/threat-model/guide
@@ -127,6 +132,7 @@ Apri solo ciò che serve al task:
 - **Convenzioni di codice** (ESM `.js`, regex globali, hash) → [code-conventions](docs/agent-guides/code-conventions.md)
 - **Testing** (≥1 test/funzione, anti-leak, fuzzing) → [testing](docs/agent-guides/testing.md)
 - **Processo di sviluppo + formula LLM** → [development-process](docs/agent-guides/development-process.md)
+- **Release e aggiornamenti** → [release-and-update-guidelines](docs/agent-guides/release-and-update-guidelines.md)
 
 ## Struttura
 ```

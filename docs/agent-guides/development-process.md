@@ -8,6 +8,7 @@ ripetibile per i consigli LLM**. Pensato per lo sviluppo con assistenti a riga d
 - Principi (antirez)
 - Sviluppo con assistenti CLI
 - Commit atomici
+- Release/update gate
 - Formula consiglio LLM ripetibile
 - Formula council multi-modello
 
@@ -32,6 +33,13 @@ Ogni commit = **una decisione**, reversibile da sola.
 - Se qualcosa va storto: `git revert <sha>` del singolo commit, senza toccare il resto.
 - Esempio dalla storia del repo: i fix di sicurezza del red team sono 6 commit separati
   (docId, cache, sanitizer, overlap, search guard, threat model) → ognuno revertibile.
+
+## Release/update gate
+
+Le release seguono la guida dedicata [release-and-update-guidelines](release-and-update-guidelines.md):
+beta pubbliche come `x.y.z-beta.N` e GitHub `pre-release`, finali come `x.y.z` solo dopo
+approvazione umana della beta corrispondente e senza modifiche funzionali nuove. Ogni release deve
+avere changelog, README/versione artefatti, build e test nello stesso commit di preparazione.
 
 ## Formula consiglio LLM ripetibile
 Quando chiedi a un LLM (o a te stesso) di proporre/valutare una modifica, **compila il

@@ -17,7 +17,8 @@ dettaglio, le guide in [docs/agent-guides/](docs/agent-guides/).
 - 8. Token-minimization (Fase 2)
 - 9. Processo di sviluppo (come è stato costruito)
 - 10. Formula consiglio LLM ripetibile
-- 11. Limiti noti
+- 11. Release e aggiornamenti
+- 12. Limiti noti
 
 ---
 
@@ -287,7 +288,17 @@ Council multi-modello: `pwm council "<contesto+domande>" -m gpt54,gemini_pro,kim
 (su account Pro niente modelli Max-only). Poi **valuti tu** il responso: accogli ciò che riduce
 un rischio reale e verificabile, respingi il resto motivando.
 
-## 11. Limiti noti
+## 11. Release e aggiornamenti
+
+Le beta pubbliche usano SemVer con suffisso pre-release, per esempio `0.1.1-beta.1`, e vanno
+pubblicate come GitHub `pre-release`. La finale della stessa linea rimuove il suffisso, per
+esempio `0.1.1`, solo dopo approvazione umana dell'ultima beta e senza modifiche funzionali nuove.
+
+La distinzione beta/finale e' una distinzione di release, non una deroga agli invarianti: una finale
+`0.y.z` non implica produzione legale se roadmap o threat model mantengono blocker aperti. Guida
+canonica: [release-and-update-guidelines](docs/agent-guides/release-and-update-guidelines.md).
+
+## 12. Limiti noti
 Verdetto dei consigli: **non deployabile in produzione legale senza remediation**. Mancano
 (Fase 2): NER locale validato (`italian-ner-xxl-v2` come target iniziale), keychain OS per la chiave cache, generalizzazione contestuale,
 audit trail immutabile + RBAC, parser binari sandboxati, DPIA/registro. Checklist Go/No-Go nel

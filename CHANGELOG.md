@@ -7,6 +7,8 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+## [0.1.1-beta.1] - 2026-06-04
+
 ### Modificato — Electron UI
 - Dashboard riorganizzata con top nav persistente: `Dashboard`, `Review`, `Bloccati`, `Bozze`,
   `Scansione`, con badge accessibili per le cose da gestire.
@@ -18,6 +20,12 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
   compatti senza spazi vuoti inutili.
 - Il badge di stato e' rinominato `Config UI pronta` per non suggerire che il client LLM collegato
   sia gia' stato verificato.
+
+### Aggiunto — Release e aggiornamenti
+- Linee guida canoniche per distinguere aggiornamenti major, feature/minor e tech/patch, con gate
+  beta/pre-release e finale.
+- Il workflow release distingue versioni con suffisso pre-release (`x.y.z-beta.N`) da versioni
+  finali (`x.y.z`): le beta GitHub sono `pre-release`, le finali no.
 
 ## [0.1.0-beta.1] - 2026-06-03
 
@@ -121,5 +129,6 @@ Prima release pubblica — **Fase 1** (server MCP stdio standalone, beta).
   (invarianti, threat model STRIDE), convenzioni MCP/codice/testing.
 - **172 test** (unit, anti-leak, e2e, redteam).
 
+[0.1.1-beta.1]: https://github.com/avvocati-e-mac/AnonyMCP/releases/tag/v0.1.1-beta.1
 [0.1.0-beta.1]: https://github.com/avvocati-e-mac/AnonyMCP/releases/tag/v0.1.0-beta.1
 [0.1.0]: https://github.com/avvocati-e-mac/AnonyMCP/releases/tag/v0.1.0

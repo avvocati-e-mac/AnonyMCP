@@ -27,9 +27,11 @@ MCP (resta MCP, client LLM esterno), non lo sostituisce. NON si generano file *a
 | M6 | Hardening produzione | keychain OS, audit trail, sandbox parser, DPIA/registro | pianificata |
 | M7 | Packaging 4-OS | estendere `release.yml` a installer .dmg/.exe/.AppImage | beta workflow implementato |
 
-**M7 beta:** `v0.1.0-beta.1` produce installer macOS arm64/x64, Windows x64, Linux AppImage e
-tarball server MCP. La release resta `prerelease` e contiene istruzioni per app non firmata/non
-notarizzata. Non equivale a Go/No-Go produzione: restano bloccanti M6/RT-01..RT-08.
+**M7 beta:** `v0.1.1-beta.1` produce installer macOS arm64/x64, Windows x64, Linux AppImage e
+tarball server MCP. Le versioni `x.y.z-beta.N` restano GitHub `pre-release`; una finale `x.y.z`
+si pubblica solo dopo approvazione umana della beta corrispondente e senza modifiche funzionali
+nuove. Non equivale a Go/No-Go produzione: restano bloccanti M6/RT-01..RT-09. Processo canonico:
+[release-and-update-guidelines](agent-guides/release-and-update-guidelines.md).
 
 **Decisione M3:** il target NER è `italian-ner-xxl-v2`, **non** "Italian-Legal-BERT". Il motivo
 è pratico: AnonyMCP deve ricevere entità da pseudonimizzare (`NerFn`), non solo un modello che
