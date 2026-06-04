@@ -95,11 +95,11 @@ Chiedersi se un utente potrebbe vedere solo il badge verde e ignorare il warning
 Fallimento grave se:
 La UI comunica `MCP configurato` senza alcun avviso di config drift.
 
-## DASH-004 - Zone operative visibili
+## DASH-004 - Griglia operativa senza KPI duplicati
 
 Scopo:
-Verificare che la dashboard mostri subito le quattro zone operative: locale reale, review umana,
-MCP/LLM e bloccato MCP.
+Verificare che la dashboard mostri subito il confine locale/review/MCP in una sola griglia, senza
+una seconda riga di KPI che ripete gli stessi conteggi.
 
 Strumenti mcp-electron:
 `get_body_text`, `find_elements`.
@@ -110,21 +110,27 @@ Config sintetica con almeno una pratica.
 Passi:
 
 1. Aprire dashboard.
-2. Verificare la presenza di `Locale reale`, `Review umana`, `MCP/LLM`, `Bloccato MCP`.
-3. Verificare che la zona `MCP/LLM` dica che vengono esposti solo testi pseudonimizzati,
+2. Verificare la presenza di `Locale reale`, `Review umana`, `MCP/LLM`, `Bloccati MCP/LLM` e
+   `Bozze locali`.
+3. Verificare che `Locale reale` usi il conteggio delle pratiche configurate e che non compaia
+   anche una card separata `Pratiche configurate`.
+4. Verificare che `Review umana` usi il conteggio dei documenti da rivedere e che non compaia
+   anche una card separata `Documenti da rivedere`.
+5. Verificare che `Bloccati MCP/LLM` compaia una sola volta nella griglia alta.
+6. Verificare che la zona `MCP/LLM` dica che vengono esposti solo testi pseudonimizzati,
    approvati e consentiti dalla policy.
-4. Verificare che la zona locale chiarisca che path e bozze re-idratate restano sul computer.
+7. Verificare che la zona locale chiarisca che path e originali restano sul computer.
 
 Atteso:
-Le zone rendono leggibile il confine locale/review/MCP senza affidarsi solo ai KPI.
+Le card rendono leggibile il confine locale/review/MCP con un solo numero per concetto.
 
 Red team:
 Valutare se `MCP/LLM` puo' essere interpretato come garanzia di anonimizzazione o sicurezza
 assoluta.
 
 Fallimento grave se:
-La dashboard mostra un badge verde generico senza distinguere locale, review e disponibilita'
-MCP/LLM.
+La dashboard mostra due righe di KPI con gli stessi conteggi o un badge verde generico senza
+distinguere locale, review e disponibilita' MCP/LLM.
 
 ## DASH-005 - KPI coerenti con le righe
 
@@ -140,7 +146,7 @@ Pratiche sintetiche dopo scansione.
 Passi:
 
 1. Scansionare le pratiche sintetiche.
-2. Leggere i KPI: pratiche, documenti da rivedere, bloccati MCP/LLM, bozze.
+2. Leggere la griglia alta: locale reale/pratiche, review, MCP/LLM, bloccati e bozze locali.
 3. Applicare filtro `Da rivedere`.
 4. Applicare filtro `Sensibili`.
 5. Applicare filtro `Bozze` se presenti.

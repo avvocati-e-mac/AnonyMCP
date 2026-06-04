@@ -605,39 +605,46 @@ function DocumentStatusStrip({ doc }: { doc: ReviewDocumentDetail | ReviewDocume
 
 function ExposureZonesPanel({ dashboard, status }: { dashboard: DashboardSummary | null; status: AppStatus }): React.JSX.Element {
   const totals = dashboard?.totals
-  const zones: { title: string; value: number; body: string; tone: StatusTone; icon: ReactNode }[] = [
+  const zones: { title: string; value: string; body: string; tone: StatusTone; icon: ReactNode }[] = [
     {
       title: 'Locale reale',
-      value: status.configuredFolders,
-      body: 'Pratiche, path e bozze re-idratate restano sul computer.',
+      value: `${totals?.practices ?? status.configuredFolders}`,
+      body: 'Pratiche configurate; path e originali restano sul computer.',
       tone: 'local',
       icon: <Lock size={18} />
     },
     {
       title: 'Review umana',
-      value: totals?.reviewRequired ?? 0,
+      value: `${totals?.reviewRequired ?? 0}`,
       body: 'Documenti da controllare prima di qualunque esposizione MCP.',
       tone: 'warning',
       icon: <UserCheck size={18} />
     },
     {
       title: 'MCP/LLM',
-      value: totals?.exposed ?? 0,
+      value: `${totals?.exposed ?? 0}`,
       body: 'Solo testo pseudonimizzato, approvato e consentito dalla policy.',
       tone: 'info',
       icon: <Cloud size={18} />
     },
     {
       title: 'Bloccati MCP/LLM',
-      value: totals?.cloudBlockedSensitiveDocs ?? 0,
+      value: `${totals?.cloudBlockedSensitiveDocs ?? 0}`,
       body: 'Documenti sensibili o non consentiti al canale LLM cloud.',
       tone: 'danger',
       icon: <CircleStop size={18} />
+    },
+    {
+      title: 'Bozze locali',
+      value: `${totals?.pendingWrites ?? 0}`,
+      body: 'Bozze LLM re-idratate da confermare nella pratica locale.',
+      tone: 'local',
+      icon: <FolderPlus size={18} />
     }
   ]
 
   return (
-    <section className="grid gap-4 md:grid-cols-4">
+    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       {zones.map((zone) => (
         <div key={zone.title} className={`rounded-lg border p-4 ${statusPillClass(zone.tone)}`}>
           <div className="flex items-center justify-between gap-3">
@@ -1417,15 +1424,6 @@ function Dashboard({
     [practices, showAllPractices]
   )
   const scanBusy = scanProgress !== null
-  const cards = useMemo(
-    () => [
-      { label: 'Pratiche configurate', value: totals?.practices ?? status.configuredFolders, icon: FolderPlus },
-      { label: 'Documenti da rivedere', value: totals?.reviewRequired ?? 0, icon: ListChecks },
-      { label: 'Bloccati MCP/LLM', value: totals?.cloudBlockedSensitiveDocs ?? 0, icon: CircleStop },
-      { label: 'Bozze LLM in attesa', value: totals?.pendingWrites ?? 0, icon: Lock }
-    ],
-    [status.configuredFolders, totals]
-  )
   const activityRows = useMemo(() => {
     const rows: ActivityRow[] = reviewDocs.map((doc) => ({
       kind: 'document' as const,
@@ -1696,18 +1694,6 @@ function Dashboard({
         </section>
 
         <ExposureZonesPanel dashboard={dashboard} status={status} />
-
-        <section className="grid gap-4 md:grid-cols-4">
-          {cards.map(({ label, value, icon: Icon }) => (
-            <div key={label} className="rounded-lg border border-slate-200 bg-white p-5">
-              <div className="flex items-center justify-between">
-                <Icon className="text-slate-400" size={20} />
-                <span className="text-2xl font-semibold text-slate-900">{value}</span>
-              </div>
-              <div className="mt-3 text-sm text-slate-600">{label}</div>
-            </div>
-          ))}
-        </section>
 
         <section className="rounded-lg border border-slate-200 bg-white">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">

@@ -169,6 +169,8 @@ Passi:
 5. Verificare che i filtri attivita' abbiano testo e conteggio, non solo colore.
 6. Verificare che le card pratica mostrino testi per `da rivedere`, `approvati`, `via MCP/LLM` e
    `bloccati`, non solo badge cromatici.
+7. Verificare che la griglia alta usi label testuali distinte (`Locale reale`, `Review umana`,
+   `MCP/LLM`, `Bloccati MCP/LLM`, `Bozze locali`) e non comunichi i conteggi solo con colore.
 
 Atteso:
 Il colore aiuta ma non e' l'unico canale informativo.
