@@ -70,17 +70,17 @@ export function discoverPracticeFolders(paths: string[], mode: FolderImportMode)
 }
 
 function safeOpaqueName(name: string): string | null {
-  const compact = name.trim().replace(/\s+/g, '-')
-  if (!compact || compact.length > 48) return null
-  if (!/^[A-Za-z0-9._-]+$/.test(compact)) return null
+  const compact = name.normalize('NFKC').trim().replace(/\s+/g, '-').toUpperCase()
+  if (!/^[A-Z0-9][A-Z0-9._-]{1,15}$/.test(compact)) return null
   if (!/\d/.test(compact)) return null
+  if (/[A-Z]{4,}/.test(compact)) return null
   if (folderIdLooksIdentifying(name) || labelLooksLikePersonName(name)) return null
   return compact
 }
 
-function nextNumericId(usedIds: Set<string>): string {
+function nextNumericId(usedIdsLower: Set<string>): string {
   let n = 1
-  while (usedIds.has(String(n))) n += 1
+  while (usedIdsLower.has(String(n).toLowerCase())) n += 1
   return String(n)
 }
 
@@ -89,7 +89,7 @@ export function buildExposedFolders(
   options: BuildFoldersOptions = {}
 ): ExposedFolder[] {
   const existingFolders = options.existingFolders ?? []
-  const usedIds = new Set(existingFolders.map((folder) => folder.id))
+  const usedIdsLower = new Set(existingFolders.map((folder) => folder.id.toLowerCase()))
   const usedPaths = new Set(existingFolders.map((folder) => resolve(folder.path)))
   const out: ExposedFolder[] = []
 
@@ -97,8 +97,10 @@ export function buildExposedFolders(
     const candidatePath = resolve(candidate.path)
     if (usedPaths.has(candidatePath)) continue
     const opaqueName = safeOpaqueName(candidate.name)
-    const id = opaqueName && !usedIds.has(opaqueName) ? opaqueName : nextNumericId(usedIds)
-    usedIds.add(id)
+    const id = opaqueName && !usedIdsLower.has(opaqueName.toLowerCase())
+      ? opaqueName
+      : nextNumericId(usedIdsLower)
+    usedIdsLower.add(id.toLowerCase())
     usedPaths.add(candidatePath)
     out.push({
       id,

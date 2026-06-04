@@ -7,14 +7,17 @@ import {
   type IpcMainInvokeEvent,
   type OpenDialogOptions
 } from 'electron'
-import { existsSync, readFileSync } from 'node:fs'
-import { createHash } from 'node:crypto'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { loadConfig, saveConfig } from '../../config.js'
 import { LocalReviewService } from '../../app/reviewService.js'
 import { buildExposedFolders, discoverPracticeFolders, type FolderImportMode } from '../../app/folderImport.js'
 import { log } from '../../util/logger.js'
+import { buildConfigLinkStatus, configHash } from './status.js'
+import {
+  isTrustedRendererUrl as isTrustedRendererUrlWithOptions,
+  rendererConsoleLogPayload
+} from './security.js'
 import {
   AppStatusSchema,
   BooleanResultSchema,
@@ -84,19 +87,11 @@ function installSecurityHeaders(): void {
 }
 
 function isTrustedRendererUrl(url: string): boolean {
-  if (isDev) {
-    const devUrl = process.env.ELECTRON_RENDERER_URL
-    if (!devUrl) return false
-    try {
-      const expected = new URL(devUrl)
-      const actual = new URL(url)
-      return actual.origin === expected.origin
-    } catch {
-      return false
-    }
-  }
-  const rendererUrl = pathToFileURL(join(__dirname, '../renderer/index.html')).href
-  return url === rendererUrl || url.startsWith(`${rendererUrl}#`)
+  return isTrustedRendererUrlWithOptions(url, {
+    isDev,
+    devUrl: process.env.ELECTRON_RENDERER_URL,
+    rendererFileUrl: pathToFileURL(join(__dirname, '../renderer/index.html')).href
+  })
 }
 
 function assertTrustedSender(event: IpcMainInvokeEvent): void {
@@ -113,11 +108,6 @@ function configPath(): string {
 
 function absoluteConfigPath(): string {
   return resolve(configPath())
-}
-
-function configHash(path: string): string | undefined {
-  if (!existsSync(path)) return undefined
-  return createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 12)
 }
 
 function localReviewService(): LocalReviewService {
@@ -170,6 +160,8 @@ function clearServiceCache(): void {
 
 function readAppStatus(): AppStatus {
   const path = absoluteConfigPath()
+  const hash = configHash(path)
+  const configLink = buildConfigLinkStatus(path, hash, process.env.ANONYMCP_CONFIG)
   try {
     const config = loadConfig(configPath())
     return AppStatusSchema.parse({
@@ -177,8 +169,9 @@ function readAppStatus(): AppStatus {
       configuredFolders: config.folders.length,
       mcpReady: config.folders.length > 0,
       configPath: path,
-      configHash: configHash(path),
-      folderIds: config.folders.map((folder) => folder.id)
+      configHash: hash,
+      folderIds: config.folders.map((folder) => folder.id),
+      ...configLink
     })
   } catch (err) {
     return AppStatusSchema.parse({
@@ -186,7 +179,9 @@ function readAppStatus(): AppStatus {
       configuredFolders: 0,
       mcpReady: false,
       configPath: path,
+      configHash: hash,
       folderIds: [],
+      ...configLink,
       configError: err instanceof Error ? err.message : String(err)
     })
   }
@@ -344,7 +339,7 @@ function createWindow(): BrowserWindow {
     log.error('Caricamento renderer fallito', { errorCode, errorDescription, validatedURL })
   })
   win.webContents.on('console-message', (_event, ...args: unknown[]) => {
-    log.warn('Console renderer', { argCount: args.length })
+    log.warn('Console renderer', rendererConsoleLogPayload(args))
   })
   win.webContents.on('render-process-gone', (_event, details) => {
     log.error('Renderer process terminato', details)

@@ -67,6 +67,30 @@ describe('folderImport opaque labels', () => {
     expect(folders.map((folder) => folder.label)).toEqual(['400F', '1', '2'])
   })
 
+  it('accetta solo nomi chiaramente opachi secondo la allowlist forte', () => {
+    const candidates: PracticeCandidate[] = [
+      { path: '/tmp/old/400f', name: '400f', createdAtMs: 10 },
+      { path: '/tmp/old/P001', name: 'P001', createdAtMs: 20 },
+      { path: '/tmp/old/2026-CV-001', name: '2026-CV-001', createdAtMs: 30 }
+    ]
+
+    const folders = buildExposedFolders(candidates)
+    expect(folders.map((folder) => folder.id)).toEqual(['400F', 'P001', '2026-CV-001'])
+  })
+
+  it('rigenera nomi con parole descrittive o parti anche se contengono numeri', () => {
+    const candidates: PracticeCandidate[] = [
+      { path: '/tmp/old/Rossi-2026', name: 'Rossi-2026', createdAtMs: 10 },
+      { path: '/tmp/old/cliente-1', name: 'cliente-1', createdAtMs: 20 },
+      { path: '/tmp/old/eredi_rossi', name: 'eredi_rossi', createdAtMs: 30 },
+      { path: '/tmp/old/comune-di-torino', name: 'comune-di-torino', createdAtMs: 40 },
+      { path: '/tmp/old/1300F-label-diversa', name: '1300F-label-diversa', createdAtMs: 50 }
+    ]
+
+    const folders = buildExposedFolders(candidates)
+    expect(folders.map((folder) => folder.id)).toEqual(['1', '2', '3', '4', '5'])
+  })
+
   it('salta pratiche gia configurate e evita collisioni di id', () => {
     const candidates: PracticeCandidate[] = [
       { path: '/tmp/new/400F', name: '400F', createdAtMs: 10 },
@@ -78,5 +102,16 @@ describe('folderImport opaque labels', () => {
       existingFolders: [{ id: '400F', label: '400F', path: '/tmp/existing/old' }]
     })
     expect(folders.map((folder) => folder.id)).toEqual(['1', '2'])
+  })
+
+  it('evita collisioni case-insensitive degli id opachi', () => {
+    const candidates: PracticeCandidate[] = [
+      { path: '/tmp/new/400f', name: '400f', createdAtMs: 10 }
+    ]
+
+    const folders = buildExposedFolders(candidates, {
+      existingFolders: [{ id: '400F', label: '400F', path: '/tmp/existing/old' }]
+    })
+    expect(folders.map((folder) => folder.id)).toEqual(['1'])
   })
 })

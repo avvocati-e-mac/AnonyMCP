@@ -31,6 +31,11 @@ describe('Electron IPC contract', () => {
       mcpReady: true,
       configPath: '/Studio/anonymcp.config.json',
       configHash: '91ab42ff0011',
+      configSource: 'ANONYMCP_CONFIG',
+      serverEnvConfigPath: '/Studio/anonymcp.config.json',
+      serverEnvConfigHash: '91ab42ff0011',
+      configMatchesServerEnv: true,
+      clientConfigStatus: 'uses_env_config',
       folderIds: ['1', '100F']
     })
     expect(status.folderIds).toEqual(['1', '100F'])
@@ -39,6 +44,8 @@ describe('Electron IPC contract', () => {
         configPresent: true,
         configuredFolders: 1,
         mcpReady: true,
+        configSource: 'appUserData',
+        clientConfigStatus: 'not_verifiable',
         realPath: '/Studio/Pratiche/Mario Rossi'
       })
     ).toThrow()

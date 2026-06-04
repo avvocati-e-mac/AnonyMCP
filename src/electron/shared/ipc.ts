@@ -22,6 +22,8 @@ const MatterSchema = z.enum(['civile', 'penale', 'tributario', 'amministrativo',
 export const FolderImportModeSchema = z.enum(['manual', 'practices_root', 'clients_root'])
 const DocumentStatusSchema = z.enum(['quarantined', 'review_required', 'approved', 'superseded'])
 const SensitivityOverrideSchema = z.enum(['sensitive', 'not_sensitive'])
+const ConfigSourceSchema = z.enum(['ANONYMCP_CONFIG', 'appUserData'])
+const ClientConfigStatusSchema = z.enum(['uses_env_config', 'not_verifiable', 'diverged'])
 export const EntityTypeSchema = z.enum([
   'PERSONA',
   'ORGANIZZAZIONE',
@@ -48,6 +50,11 @@ export const AppStatusSchema = z.object({
   mcpReady: z.boolean(),
   configPath: z.string().optional(),
   configHash: z.string().optional(),
+  configSource: ConfigSourceSchema,
+  serverEnvConfigPath: z.string().optional(),
+  serverEnvConfigHash: z.string().optional(),
+  configMatchesServerEnv: z.boolean().optional(),
+  clientConfigStatus: ClientConfigStatusSchema,
   folderIds: z.array(z.string()).optional(),
   configError: z.string().optional()
 }).strict()

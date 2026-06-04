@@ -71,6 +71,19 @@ Priorita' operativa:
 3. Prima di dichiarare il canale cloud governato: RT-06 e RT-07, con decisione esplicita su
    `residualRisk` e search query.
 
+Stato remediation 2026-06-04:
+
+- RT-04: aggiunti helper testabili per URL renderer trusted; in produzione e' ammesso solo
+  l'esatto `renderer/index.html` pacchettizzato (piu' hash route), in dev si confronta
+  l'origin normalizzato e non prefissi testuali.
+- RT-05: l'import Electron usa allowlist stretta per ID/label opachi (`400F`, `P001`,
+  `2026-CV-001` ammessi; nomi descrittivi o con parti rigenerati), con collisione
+  case-insensitive.
+- RT-08: il logging del renderer non serializza gli argomenti console, ma solo metadati
+  non sensibili (`argCount`).
+- Entity red-team: aggiunti test sintetici estesi da atti/perizie OCR per leak strutturati,
+  societa' e falsi positivi di intestazioni/ruoli; fix minimi su sanitizer, regex e veto filter.
+
 ## Red-team 2026-06-04 — badge stato UI e divergenza config
 
 Review della dashboard Electron (sezione header). Un badge verde tipo **"MCP configurato"** è
@@ -83,6 +96,12 @@ d'essere è impedire i leak).
 | ID | Milestone | Severita' | Evidenza codice | Rischio concreto | Remediation richiesta | Test di accettazione |
 |---|---|---:|---|---|---|---|
 | RT-09 | M4/M6 Electron onestà stato | Media | `src/electron/main/index.ts:readAppStatus` (`mcpReady = config.folders.length > 0`); `src/electron/main/index.ts:configPath` (`ANONYMCP_CONFIG` env vs `userData/anonymcp.config.json`); `src/electron/renderer/src/App.tsx` badge `Config UI pronta` + banner ambra | Il badge si accende solo perché la config letta dalla UI ha ≥1 cartella. Non verifica che un server MCP sia in esecuzione, né che un client LLM sia collegato, né che il client usi **lo stesso file** di config. La config UI (`userData/...`) può divergere da quella del server reale (`ANONYMCP_CONFIG` impostata dal client): approvazioni, override di sensibilità ed esclusioni decise nella UI **possono non applicarsi** al server effettivamente in ascolto. | Fatto: badge rinominato per riflettere ciò che misura davvero e warning persistente. Residuo: mostrare se `ANONYMCP_CONFIG` è impostata e se coincide col path della UI. Opzionale ma risolutivo: auto-config dei client (vedi nota sotto) con **un'unica sorgente di config**. | Status onesto quando config UI ≠ `ANONYMCP_CONFIG` (badge/banner riflettono la divergenza); test del rendering condizionale del badge. |
+
+Stato remediation 2026-06-04: `AppStatus` espone origine config, path/hash di
+`ANONYMCP_CONFIG` quando presente, match/divergenza e stato `uses_env_config` /
+`not_verifiable` / `diverged`. La dashboard mostra banner specifico: config env in uso,
+divergenza fail-safe, oppure client LLM non verificabile automaticamente. Resta fuori scope
+per questa patch la verifica live che un client LLM sia effettivamente collegato.
 
 **Nota multi-client (remediation opzionale, multipiattaforma).** Oggi non esiste codice che generi
 config per i client: la guida è solo manuale nel README. Una feature "Collega a…" risolverebbe la

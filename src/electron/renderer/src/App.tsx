@@ -643,6 +643,36 @@ function compactPath(path: string | undefined): string {
 
 type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'local'
 
+function configSourceLabel(status: AppStatus): string {
+  return status.configSource === 'ANONYMCP_CONFIG'
+    ? 'ANONYMCP_CONFIG'
+    : 'Config app locale'
+}
+
+function configLinkTone(status: AppStatus): StatusTone {
+  if (status.clientConfigStatus === 'uses_env_config') return 'success'
+  if (status.clientConfigStatus === 'diverged') return 'danger'
+  return 'warning'
+}
+
+function ConfigLinkBanner({ status }: { status: AppStatus }): React.JSX.Element {
+  const tone = configLinkTone(status)
+  const message = status.clientConfigStatus === 'uses_env_config'
+    ? 'La UI sta usando ANONYMCP_CONFIG: path e hash coincidono con la config indicata dall\'ambiente di questa app. Verifica comunque il client LLM dopo modifiche.'
+    : status.clientConfigStatus === 'diverged'
+      ? 'Attenzione: la config caricata dalla UI non coincide con ANONYMCP_CONFIG. Review, override e blocchi decisi qui potrebbero non applicarsi al server MCP collegato.'
+      : 'Client LLM non verificabile automaticamente: questa UI usa la config app locale. Se Claude, Codex o altri client sono gia collegati, controlla che puntino allo stesso file.'
+
+  return (
+    <div className={`mt-4 rounded-md border px-3 py-2 text-sm ${statusPillClass(tone)}`}>
+      <div className="flex items-start gap-2">
+        {tone === 'success' ? <CheckCircle2 className="mt-0.5 shrink-0" size={15} /> : <AlertTriangle className="mt-0.5 shrink-0" size={15} />}
+        <div>{message}</div>
+      </div>
+    </div>
+  )
+}
+
 function statusPillClass(tone: StatusTone): string {
   switch (tone) {
     case 'info':
@@ -1096,10 +1126,14 @@ function DashboardOverviewPage({
             <p className="mt-1 text-sm text-slate-600">
               Situazione attuale dell'MCP locale e prossime azioni: locale reale, review, pseudonimizzato e canale MCP/LLM restano distinti.
             </p>
-            <div className="mt-4 grid gap-2 text-xs text-slate-600 md:grid-cols-3">
+            <div className="mt-4 grid gap-2 text-xs text-slate-600 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <span className="font-medium text-slate-700">Config UI</span>
                 <div className="mt-1 truncate">{compactPath(status.configPath)}</div>
+              </div>
+              <div>
+                <span className="font-medium text-slate-700">Origine config</span>
+                <div className="mt-1 truncate">{configSourceLabel(status)}</div>
               </div>
               <div>
                 <span className="font-medium text-slate-700">Hash config</span>
@@ -1109,10 +1143,14 @@ function DashboardOverviewPage({
                 <span className="font-medium text-slate-700">Folder MCP locali</span>
                 <div className="mt-1 truncate">{status.folderIds?.length ? status.folderIds.join(', ') : 'nessuno'}</div>
               </div>
+              {status.serverEnvConfigPath ? (
+                <div className="xl:col-span-2">
+                  <span className="font-medium text-slate-700">ANONYMCP_CONFIG</span>
+                  <div className="mt-1 truncate" title={status.serverEnvConfigPath}>{compactPath(status.serverEnvConfigPath)}</div>
+                </div>
+              ) : null}
             </div>
-            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Verifica il client LLM dopo ogni modifica: la UI puo' usare una config diversa dal server MCP gia' collegato.
-            </div>
+            <ConfigLinkBanner status={status} />
           </div>
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700">
             <CheckCircle2 size={15} />

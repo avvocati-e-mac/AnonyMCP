@@ -208,16 +208,14 @@ Condizioni aggiuntive:
 - nessuna parola lunga chiaramente descrittiva;
 - normalizzazione Unicode NFKC e collision check case-insensitive.
 
-Stato implementativo dopo red-team 2026-06-03:
+Stato implementativo dopo remediation 2026-06-04:
 
-- l'import Electron gia' evita i casi chiaramente identificanti (`Mario Rossi`, `Rossi c Bianchi`)
-  e assegna `label = id`, quindi riduce il leak piu' probabile verso `list_folders`;
-- resta un gap rispetto alla regola forte: nomi con singola parte identificante e numero
-  (`Rossi-2026`, `eredi_rossi_1`, `cliente-1`) possono sembrare opachi all'euristica ma non lo
-  sono abbastanza per il canale MCP;
-- prima della produzione, `safeOpaqueName` deve diventare allowlist stretta, non denylist:
-  pattern `^[A-Z0-9][A-Z0-9._-]{1,15}$`, NFKC, almeno una cifra, collisione case-insensitive,
-  rifiuto di parole descrittive lunghe e fallback a codice numerico automatico;
+- l'import Electron usa una allowlist stretta, non una denylist: NFKC, uppercase, pattern
+  `^[A-Z0-9][A-Z0-9._-]{1,15}$`, almeno una cifra, nessuna parola alfabetica lunga chiaramente
+  descrittiva e collisione case-insensitive;
+- se il nome cartella non e' chiaramente opaco (`Rossi-2026`, `cliente-1`, `eredi_rossi`,
+  `comune-di-torino`, `1300F-label-diversa`), la UI genera un codice numerico automatico;
+- `label = id`, quindi il payload MCP `list_folders` non riceve nomi reali della pratica;
 - la config manuale resta coperta da ADR-0004: warning su stderr. Se si vuole bloccare l'avvio
   o sostituire server-side label identificanti, serve nuova decisione ADR o superseding ADR.
 
