@@ -23,6 +23,7 @@ studi legali italiani (civile, penale, tributario, amministrativo).
 - [Cos'è e come funziona](#cosè-e-come-funziona)
 - [Gli strumenti MCP](#gli-strumenti-mcp)
 - [Installazione beta app desktop](#installazione-beta-app-desktop-v011-beta1)
+- [Guida visuale beta desktop](#guida-visuale-beta-desktop)
 - [Installazione da sorgente](#installazione-da-sorgente-fase-1)
 - [Problemi comuni](#problemi-comuni-beta-desktop)
 - [Collegare AnonyMCP a Claude Desktop](#collegare-anonymcp-a-claude-desktop)
@@ -154,6 +155,11 @@ sudo apt install libfuse2
 
 La dashboard mostra il percorso della configurazione usata dall'app. Se colleghi anche Claude
 Desktop, usa quello stesso percorso come `ANONYMCP_CONFIG`.
+
+## Guida visuale beta desktop
+
+Per un percorso passo-passo con screenshot sintetici, pensato per avvocati non tecnici che non
+hanno mai visto l'app, vedi [`docs/guida-app-avvocato.md`](docs/guida-app-avvocato.md).
 
 ### Versioni beta e finali
 
