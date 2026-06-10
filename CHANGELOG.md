@@ -8,6 +8,10 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 ## [Unreleased]
 
 ### Aggiunto — Sicurezza
+- RT-01 chiuso: l'allowlist delle pratiche contiene solo percorsi canonici (`realpath` in
+  `loadConfig`); l'import Electron scarta le directory symlink durante la discovery e
+  canonicalizza le selezioni manuali, impedendo che un symlink dentro la root esponga
+  cartelle esterne con label opaca.
 - RT-06 chiuso ([ADR-0008](docs/adr/0008-residual-risk-explicit-ack.md)): oltre la soglia di
   rischio residuo contestuale l'approvazione richiede una conferma esplicita (spunta nella UI
   Electron, prompt nella TUI), persistita in `pratica.approvals.json`. Le approvazioni storiche

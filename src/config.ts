@@ -2,7 +2,7 @@
 // Caricamento e validazione della config (anonymcp.config.json).
 // ============================================================
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import type { AnonyMcpConfig, ExposedFolder } from './types.js'
@@ -42,8 +42,11 @@ export function loadConfig(configPath: string): AnonyMcpConfig {
     throw new Error(`Config non valida: ${result.error.issues.map((i) => i.message).join('; ')}`)
   }
   const config = result.data
-  // Normalizza i percorsi delle cartelle ad assoluti.
-  config.folders = config.folders.map((f) => ({ ...f, path: resolve(f.path) }))
+  // Normalizza i percorsi delle cartelle ad assoluti e canonici (realpath).
+  // RT-01: l'allowlist deve contenere il percorso fisico, non un alias/symlink,
+  // altrimenti i confini isInside (pathGuard, M-Write) confronterebbero percorsi
+  // testuali diversi da quelli reali sul disco.
+  config.folders = config.folders.map((f) => ({ ...f, path: canonicalFolderPath(f.path, f.id) }))
   // Avvisa se un label di pratica sembra contenere nomi delle parti (ADR-0004):
   // il label è esposto all'LLM via list_folders → userà un numero opaco (es. "400F").
   for (const folder of config.folders) {
@@ -65,6 +68,24 @@ export function loadConfig(configPath: string): AnonyMcpConfig {
     }
   }
   return config
+}
+
+/**
+ * Percorso canonico (realpath) di una cartella pratica. Se il percorso
+ * configurato è un symlink/alias, si usa e si logga il percorso reale; se la
+ * cartella non esiste ancora, resta il percorso assoluto (lo scan sarà vuoto).
+ */
+function canonicalFolderPath(path: string, folderId: string): string {
+  const abs = resolve(path)
+  try {
+    const real = realpathSync(abs)
+    if (real !== abs) {
+      log.warn('Percorso pratica con symlink/alias: uso il percorso reale', { folderId })
+    }
+    return real
+  } catch {
+    return abs
+  }
 }
 
 /** Salva una config validata e normalizzata. Uso locale app/CLI, non MCP. */

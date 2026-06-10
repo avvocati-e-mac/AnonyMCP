@@ -96,6 +96,11 @@ Stato remediation 2026-06-04:
 
 Stato remediation 2026-06-10:
 
+- RT-01 chiuso: oltre ai guard già presenti su scan (symlink file rifiutati) e M-Write
+  (`lstat`/`realpath` sui segmenti), ora `loadConfig` canonicalizza i percorsi pratica con
+  `realpath` (l'allowlist contiene solo percorsi fisici) e l'import Electron scarta le
+  directory symlink in discovery (`practices_root`/`clients_root`) canonicalizzando le
+  selezioni manuali. Test in `config.test.ts` e `folderImport.test.ts`.
 - RT-06 chiuso con decisione di prodotto formalizzata in
   [ADR-0008](adr/0008-residual-risk-explicit-ack.md): oltre `RISK_BLOCK_THRESHOLD`
   l'approvazione richiede conferma esplicita del rischio residuo (spunta in UI Electron,

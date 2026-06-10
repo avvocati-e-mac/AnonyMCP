@@ -5,7 +5,7 @@
 // oppure struttura Clienti -> Pratiche. Non espone dati al canale MCP.
 // ============================================================
 
-import { readdirSync, statSync } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { folderIdLooksIdentifying, labelLooksLikePersonName } from '../config.js'
 import type { ExposedFolder, LegalMatter } from '../types.js'
@@ -23,13 +23,24 @@ export interface BuildFoldersOptions {
   matter?: LegalMatter
 }
 
-function dirCandidate(path: string): PracticeCandidate | null {
+function dirCandidate(
+  path: string,
+  options: { rejectSymlink?: boolean } = {}
+): PracticeCandidate | null {
   try {
     const abs = resolve(path)
-    const stat = statSync(abs)
+    // RT-01: nelle modalità di discovery una directory symlink dentro la root
+    // potrebbe puntare ovunque (es. la home) e verrebbe importata con label
+    // opaca: si scarta fail-safe. La selezione manuale resta una scelta
+    // esplicita dell'avvocato e viene solo canonicalizzata.
+    if (options.rejectSymlink && lstatSync(abs).isSymbolicLink()) return null
+    // Canonicalizza (realpath): l'allowlist deve contenere il percorso fisico,
+    // così i confini isInside non sono aggirabili con percorsi-alias.
+    const real = realpathSync(abs)
+    const stat = statSync(real)
     if (!stat.isDirectory()) return null
     return {
-      path: abs,
+      path: real,
       name: basename(abs),
       createdAtMs: stat.birthtimeMs || stat.mtimeMs
     }
@@ -47,14 +58,16 @@ function childDirs(root: string): PracticeCandidate[] {
     return []
   }
   return names
-    .map((name) => dirCandidate(resolve(rootAbs, name)))
+    .map((name) => dirCandidate(resolve(rootAbs, name), { rejectSymlink: true }))
     .filter((candidate): candidate is PracticeCandidate => candidate != null)
 }
 
 export function discoverPracticeFolders(paths: string[], mode: FolderImportMode): PracticeCandidate[] {
   const candidates =
     mode === 'manual'
-      ? paths.map(dirCandidate).filter((candidate): candidate is PracticeCandidate => candidate != null)
+      ? paths
+          .map((path) => dirCandidate(path))
+          .filter((candidate): candidate is PracticeCandidate => candidate != null)
       : mode === 'practices_root'
         ? paths.flatMap(childDirs)
         : paths.flatMap((root) => childDirs(root).flatMap((clientDir) => childDirs(clientDir.path)))
