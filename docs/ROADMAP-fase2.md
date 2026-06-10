@@ -40,10 +40,20 @@ comprenda meglio il linguaggio legale. Vedi [ADR-0007](adr/0007-ner-model-target
 **Gap M6/M7 emerso nel test Electron:** `better-sqlite3` è un modulo nativo e usa ABI diverse
 tra Node CLI e Electron. Con un solo `node_modules`, un rebuild per Electron fa funzionare FTS5
 nell'app ma rompe i test Node; un rebuild per Node ripristina la suite ma può degradare FTS5 in
-una nuova istanza Electron. Il packaging deve quindi includere un rebuild nativo Electron
-dedicato, mentre lo sviluppo deve avere comandi espliciti per tornare al build Node prima dei
-test. Fino a quel punto, la UI può funzionare con ricerca degradata, ma non va considerata
-produzione.
+una nuova istanza Electron.
+
+*Stato 2026-06-10 — mitigato per lo sviluppo locale:*
+
+- il packaging (`npm run app:dist*`, electron-builder con `npmRebuild`) ricompila per Electron
+  e a fine corsa **ripristina automaticamente l'ABI Node** (`&& npm run rebuild:node`);
+- `pretest` esegue `scripts/ensureNodeSqlite.cjs`: verifica better-sqlite3 + FTS5 con il Node
+  corrente e, in caso di build Electron residua, ricompila per Node prima della suite;
+- comandi espliciti: `npm run rebuild:node` (suite/CLI) e `npm run rebuild:electron`
+  (prima di `app:dev` se FTS5 risulta degradata nell'app).
+
+Il CI di release usa job separati con `node_modules` freschi, quindi non era affetto. Resta
+aperto per la produzione: verifica nel packaged app che FTS5 sia attiva (non degradata) come
+parte del Go/No-Go M6.
 
 ## Red-team integrativo 2026-06-03 — remediation pre-produzione
 
