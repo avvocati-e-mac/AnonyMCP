@@ -7,6 +7,34 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+### Aggiunto — Sicurezza
+- RT-06 chiuso ([ADR-0008](docs/adr/0008-residual-risk-explicit-ack.md)): oltre la soglia di
+  rischio residuo contestuale l'approvazione richiede una conferma esplicita (spunta nella UI
+  Electron, prompt nella TUI), persistita in `pratica.approvals.json`. Le approvazioni storiche
+  senza conferma su documenti ad alto rischio decadono in review (fail-closed). Nessun blocco
+  MCP duro: l'esposizione resta una decisione professionale consapevole e registrata.
+
+### Corretto
+- Rilevazione entità sintetiche rafforzata (regex, sanitizer, stop words legali): identificatori
+  strutturati, indirizzi, società e intestazioni non finiscono più nel dizionario o nel testo
+  esposto (red-team sintetico esteso).
+- Stato config Electron onesto: la UI espone se usa `ANONYMCP_CONFIG`, segnala la divergenza con
+  la config del server e non suggerisce più un client LLM verificato; label opache forzate
+  all'import.
+- Il segnale "importi" del rischio residuo ora rileva anche la forma `1.000,00 €` (prima il
+  word boundary dopo `€` impediva il match).
+
+### Build/Sviluppo
+- Guard ABI `better-sqlite3`: `pretest` rileva una build Electron residua e ricompila per Node;
+  gli script `app:dist*` ripristinano l'ABI Node a fine packaging; nuovi comandi
+  `rebuild:node` / `rebuild:electron`.
+
+### Documentazione
+- Guida visuale passo-passo dell'app desktop per avvocati non tecnici
+  (`docs/guida-app-avvocato.md`).
+- Threat model allineato ai test esistenti (corpus label opache, trusted renderer URL e log
+  renderer senza PII erano già coperti dalla suite).
+
 ## [0.1.1-beta.1] - 2026-06-04
 
 ### Modificato — Electron UI

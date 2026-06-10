@@ -84,12 +84,11 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 - `test/writeService.test.ts` — M-Write blocca artefatti interni e symlink, pending write persistenti.
 - `test/residualRiskAck.test.ts` — RT-06: conferma esplicita oltre soglia di rischio residuo,
   decadenza fail-closed delle approvazioni storiche senza conferma (ADR-0008).
-
-Test da aggiungere per chiudere RT-01..RT-08:
-
-- corpus label opache positivo/negativo con NFKC e collisioni case-insensitive;
-- Electron trusted URL: packaged renderer ammesso, `file:///tmp/malicious.html` rifiutato;
-- stderr/log renderer con fixture PII non contiene nomi, CF, IBAN o testo originale.
+- `test/folderImport.test.ts` — RT-05: corpus label opache positivo/negativo (allowlist forte,
+  nomi identificanti rigenerati, collisioni case-insensitive).
+- `test/electronSecurity.test.ts` — RT-04/RT-08: trusted renderer URL (solo packaged
+  `index.html` ammesso, `file:///tmp/malicious.html` rifiutato; origin normalizzato in dev) e
+  log console renderer senza argomenti potenzialmente PII.
 
 > Nota: la suite funzionale/anti-leak non e' una garanzia di sicurezza. Prima del deploy in
 > produzione legale, eseguire un pentest e completare la checklist Go/No-Go (vedi piano).
