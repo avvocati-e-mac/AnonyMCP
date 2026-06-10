@@ -112,6 +112,7 @@ describe('Electron IPC contract', () => {
       sensitive: false,
       sensitiveSuggested: false,
       exposable: false,
+      requiresRiskAck: false,
       originalText: 'Mario Rossi',
       anonymizedText: 'M. R.',
       residualRisk: 0.1,

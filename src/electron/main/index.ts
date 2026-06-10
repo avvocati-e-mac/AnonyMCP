@@ -20,6 +20,7 @@ import {
 } from './security.js'
 import {
   AppStatusSchema,
+  ApproveResultSchema,
   BooleanResultSchema,
   CloudBlockedSensitiveDocumentListSchema,
   DashboardSummarySchema,
@@ -33,6 +34,7 @@ import {
   PendingWriteListSchema,
   PendingWriteRequestSchema,
   ReviewApplySelectionRequestSchema,
+  ReviewApproveRequestSchema,
   ReviewDocumentDetailSchema,
   ReviewDocumentRequestSchema,
   ReviewEntitySchema,
@@ -266,10 +268,12 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.REVIEW_APPROVE, (event, payload: unknown) => {
     assertTrustedSender(event)
-    const request = ReviewDocumentRequestSchema.parse(payload)
-    return BooleanResultSchema.parse({
-      ok: localReviewService().approveDocument(request.folderId, request.docId)
-    })
+    const request = ReviewApproveRequestSchema.parse(payload)
+    return ApproveResultSchema.parse(
+      localReviewService().approveDocument(request.folderId, request.docId, {
+        acceptResidualRisk: request.acceptResidualRisk
+      })
+    )
   })
 
   ipcMain.handle(IPC_CHANNELS.REVIEW_SET_SENSITIVITY, (event, payload: unknown) => {

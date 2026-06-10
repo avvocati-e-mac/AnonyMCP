@@ -17,6 +17,7 @@ import type {
 } from '../types.js'
 import {
   PracticeRegistry,
+  type ApproveOutcome,
   type ReviewEntity,
   type WriteOutcome
 } from '../practice/practiceRegistry.js'
@@ -58,6 +59,8 @@ export interface ReviewDocumentListItem {
   sensitiveSuggested: boolean
   sensitivityOverride?: SensitivityOverride
   exposable: boolean
+  /** RT-06: l'approvazione richiede conferma esplicita del rischio residuo. */
+  requiresRiskAck: boolean
 }
 
 export interface ReviewDocumentDetail extends ReviewDocumentListItem {
@@ -196,8 +199,12 @@ export class LocalReviewService {
     return this.registry.applyReviewSelection(folderId, docId, entities)
   }
 
-  approveDocument(folderId: string, docId: string): boolean {
-    return this.registry.approve(folderId, docId)
+  approveDocument(
+    folderId: string,
+    docId: string,
+    options: { acceptResidualRisk?: boolean } = {}
+  ): ApproveOutcome {
+    return this.registry.approve(folderId, docId, options)
   }
 
   setSensitivityOverride(

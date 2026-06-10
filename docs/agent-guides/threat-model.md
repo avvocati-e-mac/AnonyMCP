@@ -59,8 +59,9 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 - Chiave cache da **keychain OS** (ora da `ANONYMCP_CACHE_KEY`); rotazione chiave prima del
   limite nonce GCM (~2^32 messaggi/chiave; con IV random e volumi legali è teorico).
 - NER locale `italian-ner-xxl-v2` (ADR-0007) + benchmark recall/precision su corpus reale.
-- Audit trail immutabile + RBAC; generalizzazione contestuale (RG/udienza/importi) e decisione
-  esplicita su `residualRisk`: solo warning UI o blocco MCP oltre soglia (RT-06).
+- Audit trail immutabile + RBAC; generalizzazione contestuale (RG/udienza/importi) resta
+  un gap. RT-06 chiuso (ADR-0008): oltre soglia `residualRisk` l'approvazione richiede
+  conferma esplicita persistita; approvazioni storiche senza conferma decadono fail-closed.
 - Parser binari (PDF/DOCX/OCR) in **sandbox/worker** isolato.
 - RT-01 residuo: filesystem symlink-aware (`realpath`/`lstat`) da estendere ai flussi di import/allowlist
   non MCP; scan e M-Write hanno test di rifiuto symlink.
@@ -81,6 +82,8 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 - `test/redteam.filesystem.test.ts` — scan ignora symlink fuori pratica.
 - `test/approvalPersistence.test.ts` — approvazioni fail-closed e ritiro documenti cancellati.
 - `test/writeService.test.ts` — M-Write blocca artefatti interni e symlink, pending write persistenti.
+- `test/residualRiskAck.test.ts` — RT-06: conferma esplicita oltre soglia di rischio residuo,
+  decadenza fail-closed delle approvazioni storiche senza conferma (ADR-0008).
 
 Test da aggiungere per chiudere RT-01..RT-08:
 

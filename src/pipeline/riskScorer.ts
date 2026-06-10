@@ -65,7 +65,8 @@ export function residualRisk(anonymizedText: string, entities: DetectedEntity[])
     /\bR\.?\s?G\.?\b/i, // numero di ruolo
     /\budienza\b/i,
     /\bsezione\b/i,
-    /\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\s?(?:€|euro)\b/i, // importi
+    // importi: il \b vale solo dopo "euro" (dopo "€" non esiste boundary)
+    /\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\s?(?:€|euro\b)/i,
     /\bIT\d{2}[A-Z0-9]/i // IBAN residuo
   ]
   for (const re of linkabilitySignals) if (re.test(anonymizedText)) score += 0.15
@@ -81,5 +82,9 @@ export function residualRisk(anonymizedText: string, entities: DetectedEntity[])
   return Math.min(1, score)
 }
 
-/** Soglia oltre la quale l'export verso un LLM richiede doppia approvazione. */
+/**
+ * Soglia oltre la quale l'approvazione richiede la conferma esplicita del
+ * rischio residuo da parte dell'avvocato (RT-06, ADR-0008). Non è un blocco
+ * MCP duro: l'esposizione resta governata da approvazione + policy cloud.
+ */
 export const RISK_BLOCK_THRESHOLD = 0.5

@@ -84,6 +84,16 @@ Stato remediation 2026-06-04:
 - Entity red-team: aggiunti test sintetici estesi da atti/perizie OCR per leak strutturati,
   societa' e falsi positivi di intestazioni/ruoli; fix minimi su sanitizer, regex e veto filter.
 
+Stato remediation 2026-06-10:
+
+- RT-06 chiuso con decisione di prodotto formalizzata in
+  [ADR-0008](adr/0008-residual-risk-explicit-ack.md): oltre `RISK_BLOCK_THRESHOLD`
+  l'approvazione richiede conferma esplicita del rischio residuo (spunta in UI Electron,
+  prompt in TUI), persistita in `pratica.approvals.json`; le approvazioni storiche senza
+  conferma su documenti ad alto rischio decadono in review (fail-closed). Nessun blocco MCP
+  duro: con l'euristica attuale colpirebbe la maggioranza degli atti (alarm fatigue).
+  Test: `test/residualRiskAck.test.ts`.
+
 ## Red-team 2026-06-04 — badge stato UI e divergenza config
 
 Review della dashboard Electron (sezione header). Un badge verde tipo **"MCP configurato"** è

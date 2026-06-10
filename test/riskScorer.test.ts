@@ -34,6 +34,11 @@ describe('residualRisk', () => {
     expect(residualRisk('lorem ipsum dolor sit amet', noEntities)).toBe(0)
   })
 
+  it("rileva gli importi sia con simbolo '€' sia con 'euro'", () => {
+    expect(residualRisk('condanna al pagamento di 1.000,00 € oltre interessi', noEntities)).toBeGreaterThan(0)
+    expect(residualRisk('condanna al pagamento di 1.000,00 euro oltre interessi', noEntities)).toBeGreaterThan(0)
+  })
+
   it('la soglia di blocco è ragionevole', () => {
     expect(RISK_BLOCK_THRESHOLD).toBeGreaterThan(0)
     expect(RISK_BLOCK_THRESHOLD).toBeLessThanOrEqual(1)

@@ -30,7 +30,7 @@ import { stripTextMetadata } from '../pipeline/metadataStripper.js'
 import { processText } from '../pipeline/documentService.js'
 import { SessionManager } from '../engine/sessionManager.js'
 import { applyPseudonyms, buildEntityRegex } from '../engine/anonymizer.js'
-import { classifySensitivity } from '../pipeline/riskScorer.js'
+import { classifySensitivity, RISK_BLOCK_THRESHOLD } from '../pipeline/riskScorer.js'
 import { sanitizeId, isInternalArtifact } from '../util/pathGuard.js'
 import { hmac, randomKey, sha256 } from '../util/crypto.js'
 import { buildCache, saveCache, loadCache } from './practiceStore.js'
@@ -61,6 +61,13 @@ import {
   removeSensitivityDecision
 } from './sensitivityStore.js'
 import { log } from '../util/logger.js'
+
+/** Esito di un'approvazione locale (mai esposto via MCP). */
+export interface ApproveOutcome {
+  ok: boolean
+  /** Motivo azionabile del rifiuto (RT-06: serve conferma del rischio residuo). */
+  reason?: 'unknown_document' | 'risk_ack_required'
+}
 
 /** Esito di una scrittura M-Write (LOCALE; il return verso l'LLM è derivato senza PII). */
 export interface WriteOutcome {
@@ -238,10 +245,15 @@ export class PracticeRegistry {
       const result = await processText(raw, { session: practice.session })
       this.applySensitivityDecision(result, getSensitivityDecision(sensitivityDecisions, docHash))
       // Un documento è approvato se: auto-approve, OPPURE è stato approvato su disco
-      // (dalla TUI) E il file non è cambiato dall'approvazione (sourceHash combacia).
+      // (dalla TUI/UI) E il file non è cambiato dall'approvazione (sourceHash combacia).
+      // Con rischio residuo >= soglia serve anche la conferma esplicita registrata
+      // con l'approvazione (RT-06, ADR-0008): senza, decade in review (fail-closed).
       const isAutoApprove = !this.requireManualApproval
+      const approvedOnDisk = isApproved(approvals, docHash, {
+        requireRiskAck: result.residualRisk >= RISK_BLOCK_THRESHOLD
+      })
       const status: DocumentStatus =
-        isAutoApprove || isApproved(approvals, docHash) ? 'approved' : 'review_required'
+        isAutoApprove || approvedOnDisk ? 'approved' : 'review_required'
       const doc: DocEntry = { docId, filePath, status, sourceHash: docHash, result }
       practice.docs.set(docId, doc)
       allEntities.push(...result.entities)
@@ -365,21 +377,45 @@ export class PracticeRegistry {
   }
 
   /**
+   * True se l'approvazione del documento richiede la conferma esplicita del
+   * rischio residuo contestuale (RT-06, ADR-0008): rischio >= soglia di blocco.
+   */
+  requiresRiskAck(doc: DocEntry): boolean {
+    return (doc.result?.residualRisk ?? 0) >= RISK_BLOCK_THRESHOLD
+  }
+
+  /**
    * Approva un documento in revisione (human-in-the-loop). L'approvazione abilita
    * l'esposizione solo se la policy cloud consente quel documento.
+   * Se il rischio residuo è >= soglia, serve la conferma esplicita
+   * `acceptResidualRisk` (RT-06): senza, l'approvazione viene rifiutata.
    */
-  approve(folderId: string, docId: string): boolean {
+  approve(
+    folderId: string,
+    docId: string,
+    options: { acceptResidualRisk?: boolean } = {}
+  ): ApproveOutcome {
     const practice = this.practices.get(folderId)
     const doc = practice?.docs.get(docId)
-    if (!practice || !doc) return false
+    if (!practice || !doc) return { ok: false, reason: 'unknown_document' }
+    const needsAck = this.requiresRiskAck(doc)
+    if (needsAck && !options.acceptResidualRisk) {
+      log.warn('Approvazione rifiutata: serve conferma esplicita del rischio residuo', {
+        folderId,
+        docId
+      })
+      return { ok: false, reason: 'risk_ack_required' }
+    }
     doc.status = 'approved'
     if (this.isExposable(doc) && doc.result) this.indexDoc(practice, docId, doc.result.text)
     else practice.index?.removeDocument(docId)
     // Persiste l'approvazione su disco, così è visibile agli altri processi
     // (es. il server di Claude Desktop) senza riavvio, legandola al sourceHash.
-    recordApproval(practice.folder.path, folderId, doc.sourceHash)
+    recordApproval(practice.folder.path, folderId, doc.sourceHash, {
+      residualRiskAccepted: needsAck
+    })
     this.onResourcesChanged?.()
-    return true
+    return { ok: true }
   }
 
   /**
@@ -396,7 +432,9 @@ export class PracticeRegistry {
     const approvals = loadApprovals(practice.folder.path)
     let changed = false
     for (const doc of practice.docs.values()) {
-      const nowApproved = isApproved(approvals, doc.sourceHash)
+      const nowApproved = isApproved(approvals, doc.sourceHash, {
+        requireRiskAck: this.requiresRiskAck(doc)
+      })
       if (nowApproved && doc.status !== 'approved') {
         // Promozione: la TUI ha approvato → esponi e indicizza.
         doc.status = 'approved'
@@ -612,6 +650,7 @@ export class PracticeRegistry {
     sensitiveSuggested: boolean
     sensitivityOverride?: SensitivityOverride
     exposable: boolean
+    requiresRiskAck: boolean
   }[] {
     const p = this.practices.get(folderId)
     if (!p) throw new Error(`Pratica sconosciuta: ${folderId}`)
@@ -622,7 +661,8 @@ export class PracticeRegistry {
       sensitive: d.result?.sensitive ?? false,
       sensitiveSuggested: d.result?.sensitiveSuggested ?? d.result?.sensitive ?? false,
       sensitivityOverride: d.result?.sensitivityOverride,
-      exposable: this.isExposable(d)
+      exposable: this.isExposable(d),
+      requiresRiskAck: this.requiresRiskAck(d)
     }))
   }
 

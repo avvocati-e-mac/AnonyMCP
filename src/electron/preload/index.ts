@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import {
   AppStatusSchema,
+  ApproveResultSchema,
   CloudBlockedSensitiveDocumentListSchema,
   DashboardSummarySchema,
   FolderImportPathsRequestSchema,
@@ -13,6 +14,7 @@ import {
   PendingWriteListSchema,
   PendingWriteRequestSchema,
   ReviewApplySelectionRequestSchema,
+  ReviewApproveRequestSchema,
   ReviewDocumentDetailSchema,
   ReviewDocumentRequestSchema,
   ReviewEntitySchema,
@@ -24,6 +26,7 @@ import {
   BooleanResultSchema,
   type AnonymcpElectronApi,
   type AppStatus,
+  type ApproveResult,
   type CloudBlockedSensitiveDocument,
   type DashboardSummary,
   type FolderImportMode,
@@ -92,10 +95,16 @@ const api: AnonymcpElectronApi = Object.freeze({
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.REVIEW_APPLY_SELECTION, request)
     return BooleanResultSchema.parse(result).ok
   },
-  async approveReviewDocument(folderId: string, docId: string): Promise<boolean> {
-    const request = ReviewDocumentRequestSchema.parse({ folderId, docId })
+  async approveReviewDocument(
+    folderId: string,
+    docId: string,
+    acceptResidualRisk?: boolean
+  ): Promise<ApproveResult> {
+    const request = ReviewApproveRequestSchema.parse(
+      acceptResidualRisk === undefined ? { folderId, docId } : { folderId, docId, acceptResidualRisk }
+    )
     const result: unknown = await ipcRenderer.invoke(IPC_CHANNELS.REVIEW_APPROVE, request)
-    return BooleanResultSchema.parse(result).ok
+    return ApproveResultSchema.parse(result)
   },
   async setDocumentSensitivity(
     folderId: string,

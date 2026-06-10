@@ -27,6 +27,13 @@ export interface ApprovalEntry {
   /** Hash del contenuto del file al momento dell'approvazione (chiave stabile). */
   sourceHash: string
   approvedAt: string
+  /**
+   * Conferma esplicita del rischio residuo contestuale (RT-06, ADR-0008).
+   * Richiesta quando residualRisk >= RISK_BLOCK_THRESHOLD al momento
+   * dell'approvazione. Le approvazioni storiche senza flag NON valgono per
+   * documenti ad alto rischio: decadono in review (fail-closed).
+   */
+  residualRiskAccepted?: boolean
 }
 
 export interface ApprovalFile {
@@ -45,29 +52,33 @@ export function fileSourceHash(content: string): string {
   return `sha256:${sha256(content)}`
 }
 
-/** Carica lo stato di approvazione. Ritorna un Set dei sourceHash approvati. */
-export function loadApprovals(folderPath: string): Set<string> {
+/** Carica lo stato di approvazione. Ritorna una mappa sourceHash → entry. */
+export function loadApprovals(folderPath: string): Map<string, ApprovalEntry> {
   const path = approvalPath(folderPath)
-  if (!existsSync(path)) return new Set()
+  if (!existsSync(path)) return new Map()
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as ApprovalFile
-    if (raw.version !== 1 || !Array.isArray(raw.entries)) return new Set()
-    return new Set(raw.entries.map((e) => e.sourceHash))
+    if (raw.version !== 1 || !Array.isArray(raw.entries)) return new Map()
+    return new Map(
+      raw.entries
+        .filter((e) => typeof e?.sourceHash === 'string')
+        .map((e) => [e.sourceHash, e])
+    )
   } catch (err) {
     log.warn('Stato approvazione illeggibile (ignorato)', {
       error: err instanceof Error ? err.message : String(err)
     })
-    return new Set()
+    return new Map()
   }
 }
 
 /** Scrive lo stato di approvazione in modo atomico (write su tmp + rename). */
-export function saveApprovals(folderPath: string, practiceId: string, hashes: Set<string>): void {
-  const entries: ApprovalEntry[] = [...hashes].map((sourceHash) => ({
-    sourceHash,
-    approvedAt: new Date().toISOString()
-  }))
-  const file: ApprovalFile = { version: 1, practiceId, entries }
+export function saveApprovals(
+  folderPath: string,
+  practiceId: string,
+  approvals: Map<string, ApprovalEntry>
+): void {
+  const file: ApprovalFile = { version: 1, practiceId, entries: [...approvals.values()] }
   const path = approvalPath(folderPath)
   const tmp = `${path}.tmp`
   writeFileSync(tmp, JSON.stringify(file, null, 2), 'utf8')
@@ -76,19 +87,42 @@ export function saveApprovals(folderPath: string, practiceId: string, hashes: Se
 
 /**
  * Registra l'approvazione di un documento (idempotente) e persiste, usando il
- * sourceHash come chiave stabile tra processi (TUI ↔ server).
+ * sourceHash come chiave stabile tra processi (TUI ↔ server). L'eventuale
+ * conferma del rischio residuo viene persistita con l'entry (RT-06).
  */
-export function recordApproval(folderPath: string, practiceId: string, sourceHash: string): void {
-  const hashes = loadApprovals(folderPath)
-  hashes.add(sourceHash)
-  saveApprovals(folderPath, practiceId, hashes)
+export function recordApproval(
+  folderPath: string,
+  practiceId: string,
+  sourceHash: string,
+  options: { residualRiskAccepted?: boolean } = {}
+): void {
+  const approvals = loadApprovals(folderPath)
+  const existing = approvals.get(sourceHash)
+  approvals.set(sourceHash, {
+    sourceHash,
+    approvedAt: existing?.approvedAt ?? new Date().toISOString(),
+    ...(options.residualRiskAccepted || existing?.residualRiskAccepted
+      ? { residualRiskAccepted: true }
+      : {})
+  })
+  saveApprovals(folderPath, practiceId, approvals)
   log.info('Approvazione persistita', { practiceId })
 }
 
 /**
  * True se il sourceHash corrente del documento risulta approvato. Se il file è
- * cambiato, il suo hash non sarà nel set → l'approvazione è decaduta.
+ * cambiato, il suo hash non sarà nella mappa → l'approvazione è decaduta.
+ * Con `requireRiskAck` l'approvazione vale solo se è stata registrata con la
+ * conferma esplicita del rischio residuo (RT-06): le approvazioni storiche
+ * senza flag decadono fail-closed.
  */
-export function isApproved(approvals: Set<string>, currentSourceHash: string): boolean {
-  return approvals.has(currentSourceHash)
+export function isApproved(
+  approvals: Map<string, ApprovalEntry>,
+  currentSourceHash: string,
+  options: { requireRiskAck?: boolean } = {}
+): boolean {
+  const entry = approvals.get(currentSourceHash)
+  if (!entry) return false
+  if (options.requireRiskAck) return entry.residualRiskAccepted === true
+  return true
 }
