@@ -51,9 +51,18 @@ una nuova istanza Electron.
 - comandi espliciti: `npm run rebuild:node` (suite/CLI) e `npm run rebuild:electron`
   (prima di `app:dev` se FTS5 risulta degradata nell'app).
 
+*Collaudo 2026-06-11 (app reale, pratiche sintetiche):* due insidie confermate sul campo e
+fissate in `scripts/rebuildElectron.cjs`:
+
+- `electron-builder install-app-deps` può essere un no-op silenzioso (binario resta ABI Node,
+  app funzionante ma FTS5 degradata senza errori) → serve `electron-rebuild --force`;
+- su macOS arm64 il binario ricompilato va **ri-firmato ad-hoc** (`codesign --force --sign -`),
+  altrimenti dyld uccide Electron con SIGKILL "Code Signature Invalid" senza alcun errore JS.
+
 Il CI di release usa job separati con `node_modules` freschi, quindi non era affetto. Resta
 aperto per la produzione: verifica nel packaged app che FTS5 sia attiva (non degradata) come
-parte del Go/No-Go M6.
+parte del Go/No-Go M6 — il collaudo dev sopra mostra che la degradazione è silenziosa, quindi
+serve un check esplicito (es. presenza `pratica.searchindex.db` dopo scan).
 
 ## Red-team integrativo 2026-06-03 — remediation pre-produzione
 

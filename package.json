@@ -25,7 +25,7 @@
     "app:dist:linux": "npm run build && npm run app:build && electron-builder --linux --config electron-builder.config.cjs && npm run rebuild:node",
     "app:typecheck": "tsc -p tsconfig.electron.json --noEmit",
     "rebuild:node": "npm rebuild better-sqlite3",
-    "rebuild:electron": "electron-builder install-app-deps",
+    "rebuild:electron": "node scripts/rebuildElectron.cjs",
     "review": "node --import tsx src/tui/index.ts",
     "pretest": "node scripts/ensureNodeSqlite.cjs",
     "test": "vitest run",
