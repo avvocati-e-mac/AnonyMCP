@@ -25,13 +25,17 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 - Stato config Electron onesto: la UI espone se usa `ANONYMCP_CONFIG`, segnala la divergenza con
   la config del server e non suggerisce più un client LLM verificato; label opache forzate
   all'import.
-- Il segnale "importi" del rischio residuo ora rileva anche la forma `1.000,00 €` (prima il
-  word boundary dopo `€` impediva il match).
+- Il segnale "importi" del rischio residuo ora rileva anche le forme `1.000,00 €` e
+  `euro 9.600,00` (valuta prima della cifra, frequente negli atti): entrambe sfuggivano
+  al pattern per via dei word boundary attorno a `€`.
 
 ### Build/Sviluppo
 - Guard ABI `better-sqlite3`: `pretest` rileva una build Electron residua e ricompila per Node;
   gli script `app:dist*` ripristinano l'ABI Node a fine packaging; nuovi comandi
   `rebuild:node` / `rebuild:electron`.
+- `rebuild:electron` usa `electron-rebuild --force` e su macOS ri-firma ad-hoc il binario
+  (collaudo su app reale: `install-app-deps` era un no-op silenzioso con FTS5 degradata, e il
+  binario non ri-firmato faceva uccidere Electron da dyld con "Code Signature Invalid").
 
 ### Documentazione
 - Guida visuale passo-passo dell'app desktop per avvocati non tecnici

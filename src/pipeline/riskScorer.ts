@@ -65,8 +65,10 @@ export function residualRisk(anonymizedText: string, entities: DetectedEntity[])
     /\bR\.?\s?G\.?\b/i, // numero di ruolo
     /\budienza\b/i,
     /\bsezione\b/i,
-    // importi: il \b vale solo dopo "euro" (dopo "€" non esiste boundary)
-    /\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\s?(?:€|euro\b)/i,
+    // importi, sia cifra-prima ("1.000,00 €"/"9.600,00 euro") sia valuta-prima
+    // ("euro 9.600,00", frequente negli atti). Il \b vale solo attorno a
+    // "euro": dopo/prima di "€" non esiste word boundary.
+    /\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\s?(?:€|euro\b)|(?:€|\beuro)\s?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?\b/i,
     /\bIT\d{2}[A-Z0-9]/i // IBAN residuo
   ]
   for (const re of linkabilitySignals) if (re.test(anonymizedText)) score += 0.15

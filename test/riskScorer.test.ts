@@ -39,6 +39,11 @@ describe('residualRisk', () => {
     expect(residualRisk('condanna al pagamento di 1.000,00 euro oltre interessi', noEntities)).toBeGreaterThan(0)
   })
 
+  it('rileva gli importi con la valuta prima della cifra (uso forense comune)', () => {
+    expect(residualRisk('canoni scaduti pari a euro 9.600,00 da accreditare', noEntities)).toBeGreaterThan(0)
+    expect(residualRisk('importo di € 2.500,00 oltre accessori', noEntities)).toBeGreaterThan(0)
+  })
+
   it('la soglia di blocco è ragionevole', () => {
     expect(RISK_BLOCK_THRESHOLD).toBeGreaterThan(0)
     expect(RISK_BLOCK_THRESHOLD).toBeLessThanOrEqual(1)
