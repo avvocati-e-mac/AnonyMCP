@@ -22,7 +22,7 @@ studi legali italiani (civile, penale, tributario, amministrativo).
 
 - [Cos'è e come funziona](#cosè-e-come-funziona)
 - [Gli strumenti MCP](#gli-strumenti-mcp)
-- [Installazione beta app desktop](#installazione-beta-app-desktop-v011-beta1)
+- [Installazione beta app desktop](#installazione-beta-app-desktop-v020-beta1)
 - [Guida visuale beta desktop](#guida-visuale-beta-desktop)
 - [Installazione da sorgente](#installazione-da-sorgente-fase-1)
 - [Problemi comuni](#problemi-comuni-beta-desktop)
@@ -71,7 +71,7 @@ AnonyMCP espone al client questi strumenti (e i documenti come *Resources*):
 Non esiste — di proposito — alcuno strumento di de-anonimizzazione. La re-idratazione di
 `write_document` è un passaggio **locale** lato server: l'LLM non riceve mai i dati reali.
 
-## Installazione beta app desktop v0.1.1-beta.1
+## Installazione beta app desktop v0.2.0-beta.1
 
 > **Beta di test.** Questa versione serve a provare l'app desktop e il flusso di review.
 > Non usarla ancora con pratiche reali o documenti sensibili di clienti. Usa copie di test o
@@ -82,11 +82,11 @@ pagina [Releases](https://github.com/avvocati-e-mac/AnonyMCP/releases):
 
 | File | Computer |
 |---|---|
-| `AnonyMCP-0.1.1-beta.1-arm64.dmg` | Mac Apple Silicon (M1/M2/M3/M4) |
-| `AnonyMCP-0.1.1-beta.1-x64.dmg` | Mac Intel |
-| `AnonyMCP-0.1.1-beta.1-windows-x64-setup.exe` | Windows 10/11 a 64 bit |
-| `AnonyMCP-0.1.1-beta.1-linux-x64.AppImage` | Linux a 64 bit |
-| `anonymcp-server-0.1.1-beta.1.tgz` | Solo utenti tecnici/server MCP |
+| `AnonyMCP-0.2.0-beta.1-arm64.dmg` | Mac Apple Silicon (M1/M2/M3/M4) |
+| `AnonyMCP-0.2.0-beta.1-x64.dmg` | Mac Intel |
+| `AnonyMCP-0.2.0-beta.1-windows-x64-setup.exe` | Windows 10/11 a 64 bit |
+| `AnonyMCP-0.2.0-beta.1-linux-x64.AppImage` | Linux a 64 bit |
+| `anonymcp-server-0.2.0-beta.1.tgz` | Solo utenti tecnici/server MCP |
 
 Per capire quale Mac hai: menu Apple -> **Informazioni su questo Mac**. Se leggi "Chip Apple
 M..." scarica `arm64`; se leggi "Processore Intel" scarica `x64`.
@@ -116,7 +116,7 @@ Poi riapri AnonyMCP dalla cartella Applicazioni.
 Questa beta non è ancora firmata con un certificato Microsoft. Windows SmartScreen può mostrare
 "Windows ha protetto il PC".
 
-1. Scarica `AnonyMCP-0.1.1-beta.1-windows-x64-setup.exe`.
+1. Scarica `AnonyMCP-0.2.0-beta.1-windows-x64-setup.exe`.
 2. Apri il file con doppio click.
 3. Se appare SmartScreen, premi **Ulteriori informazioni**.
 4. Premi **Esegui comunque**.
@@ -128,13 +128,13 @@ dalla pagina GitHub ufficiale `avvocati-e-mac/AnonyMCP`.
 
 ### Linux - AppImage
 
-1. Scarica `AnonyMCP-0.1.1-beta.1-linux-x64.AppImage`.
+1. Scarica `AnonyMCP-0.2.0-beta.1-linux-x64.AppImage`.
 2. Rendi eseguibile il file.
 3. Avvialo.
 
 ```bash
-chmod +x AnonyMCP-0.1.1-beta.1-linux-x64.AppImage
-./AnonyMCP-0.1.1-beta.1-linux-x64.AppImage
+chmod +x AnonyMCP-0.2.0-beta.1-linux-x64.AppImage
+./AnonyMCP-0.2.0-beta.1-linux-x64.AppImage
 ```
 
 Su alcune distribuzioni può servire `libfuse2`:
@@ -165,7 +165,7 @@ hanno mai visto l'app, vedi [`docs/guida-app-avvocato.md`](docs/guida-app-avvoca
 
 Le beta pubbliche usano il formato `x.y.z-beta.N` e sono pubblicate come GitHub `pre-release`.
 Quando una beta e' stata approvata e non servono modifiche funzionali, la stessa linea puo'
-diventare finale togliendo il suffisso beta, per esempio `0.1.1-beta.1` -> `0.1.1`. Una release
+diventare finale togliendo il suffisso beta, per esempio `0.2.0-beta.1` -> `0.1.1`. Una release
 finale non significa automaticamente produzione legale: valgono sempre i blocker Go/No-Go indicati
 in roadmap e threat model.
 
@@ -323,7 +323,7 @@ e [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
   documenti testuali (`.txt`/`.md`). **Beta: non ancora deployabile in produzione legale**
   (vedi la checklist Go/No-Go e [`threat-model`](docs/agent-guides/threat-model.md)).
 - **Fase 2** (in corso) — già implementati **M-Write** e una beta desktop **Electron**
-  (`v0.1.1-beta.1`) per configurazione pratiche, dashboard e review locale. La beta è pensata
+  (`v0.2.0-beta.1`) per configurazione pratiche, dashboard e review locale. La beta è pensata
   per test guidati da avvocati non tecnici, ma non è ancora produzione legale. Prossime tappe:
   hardening M6, parser PDF/DOCX/OCR e NER locale `italian-ner-xxl-v2` (ADR-0007).
   Dettaglio in [`docs/ROADMAP-fase2.md`](docs/ROADMAP-fase2.md).

@@ -7,6 +7,8 @@ e il progetto adotta il [versionamento semantico](https://semver.org/lang/it/).
 
 ## [Unreleased]
 
+## [0.2.0-beta.1] - 2026-06-11
+
 ### Aggiunto — Sicurezza
 - RT-01 chiuso: l'allowlist delle pratiche contiene solo percorsi canonici (`realpath` in
   `loadConfig`); l'import Electron scarta le directory symlink durante la discovery e
