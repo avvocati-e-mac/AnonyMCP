@@ -47,7 +47,7 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 | **SessionManager** | Disclosure | memory/crash dump | solo RAM, `reset()` zeroization | dump del processo (mitigare in Fase 2) |
 | **Pipeline NER** | Disclosure (leak) | offuscamento per evadere il NER | `sanitizeMarkdown` (zero-width/entity/NFKC/hyphenation) + quarantena | NER regex-only: recall imperfetto → `italian-ner-xxl-v2` in worker locale (ADR-0007) |
 | **search** | Disclosure (inference) | query = dato reale per confermarne la presenza | guard anti-PII su identificatori formali, RG, targhe e query person-like; ricerca su testo già pseudonimizzato; errore senza echo della query PII | residuo: euristiche anti-PII non equivalgono a NER completo della query |
-| **pathGuard** | Tampering/Disclosure | directory traversal / URI fuori allowlist; symlink che punta fuori pratica | `assertAllowed` + blocco artefatti interni; scan rifiuta symlink file; M-Write rifiuta segmenti symlink esistenti | RT-01 residuo: estendere `realpath`/`lstat` anche ai flussi di import/allowlist non MCP |
+| **pathGuard** | Tampering/Disclosure | directory traversal / URI fuori allowlist; symlink che punta fuori pratica | `assertAllowed` + blocco artefatti interni; scan rifiuta symlink file; M-Write rifiuta segmenti symlink esistenti; allowlist canonica (`realpath` in `loadConfig`); import Electron scarta directory symlink in discovery e canonicalizza le selezioni manuali | — |
 | **M-Write** | Tampering/Disclosure | relPath verso artefatti interni o directory symlink; overwrite di store locali | path relativo, estensioni testuali, blocklist store/DB AnonyMCP, staging + hash + review locale, symlink target rifiutati | — |
 | **Electron UI/IPC** | Spoofing/Elevation/Disclosure | renderer navigato a pagina locale diversa che invoca IPC; console renderer con PII | `contextIsolation`, `sandbox`, `nodeIntegration=false`, CSP, preload nominale, Zod | RT-04: trust solo dell'esatto renderer packaged, non ogni `file://`; RT-08: redazione log renderer-forwarded |
 | **Dashboard / stato UI** | Spoofing (falso senso di sicurezza) | badge di stato generico suggerisce un collegamento client→server che non viene verificato; config UI (`userData`) può divergere da quella del server reale (`ANONYMCP_CONFIG`) | badge `Config UI pronta` + banner ambra di avviso divergenza (`App.tsx`); `mcpReady` riflette solo la presenza di cartelle in config | RT-09: badge onesto su ciò che misura + verifica/visibilità della divergenza config UI↔server |
@@ -59,11 +59,13 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 - Chiave cache da **keychain OS** (ora da `ANONYMCP_CACHE_KEY`); rotazione chiave prima del
   limite nonce GCM (~2^32 messaggi/chiave; con IV random e volumi legali è teorico).
 - NER locale `italian-ner-xxl-v2` (ADR-0007) + benchmark recall/precision su corpus reale.
-- Audit trail immutabile + RBAC; generalizzazione contestuale (RG/udienza/importi) e decisione
-  esplicita su `residualRisk`: solo warning UI o blocco MCP oltre soglia (RT-06).
+- Audit trail immutabile + RBAC; generalizzazione contestuale (RG/udienza/importi) resta
+  un gap. RT-06 chiuso (ADR-0008): oltre soglia `residualRisk` l'approvazione richiede
+  conferma esplicita persistita; approvazioni storiche senza conferma decadono fail-closed.
 - Parser binari (PDF/DOCX/OCR) in **sandbox/worker** isolato.
-- RT-01 residuo: filesystem symlink-aware (`realpath`/`lstat`) da estendere ai flussi di import/allowlist
-  non MCP; scan e M-Write hanno test di rifiuto symlink.
+- RT-01 chiuso: scan e M-Write rifiutano i symlink (con test); `loadConfig` canonicalizza i
+  percorsi pratica con `realpath`; l'import Electron scarta le directory symlink in discovery e
+  canonicalizza le selezioni manuali (test in `config.test.ts` e `folderImport.test.ts`).
 - RT-04/RT-08: hardening Electron runtime: renderer URL esatto, dev origin normalizzato, log
   renderer redatti e test su pagina `file://` non fidata.
 - RT-05: import label come allowlist stretta, non euristica permissiva; config manuale resta
@@ -81,12 +83,13 @@ Attori ostili considerati: **host MCP malevolo**; **documento con prompt-injecti
 - `test/redteam.filesystem.test.ts` — scan ignora symlink fuori pratica.
 - `test/approvalPersistence.test.ts` — approvazioni fail-closed e ritiro documenti cancellati.
 - `test/writeService.test.ts` — M-Write blocca artefatti interni e symlink, pending write persistenti.
-
-Test da aggiungere per chiudere RT-01..RT-08:
-
-- corpus label opache positivo/negativo con NFKC e collisioni case-insensitive;
-- Electron trusted URL: packaged renderer ammesso, `file:///tmp/malicious.html` rifiutato;
-- stderr/log renderer con fixture PII non contiene nomi, CF, IBAN o testo originale.
+- `test/residualRiskAck.test.ts` — RT-06: conferma esplicita oltre soglia di rischio residuo,
+  decadenza fail-closed delle approvazioni storiche senza conferma (ADR-0008).
+- `test/folderImport.test.ts` — RT-05: corpus label opache positivo/negativo (allowlist forte,
+  nomi identificanti rigenerati, collisioni case-insensitive).
+- `test/electronSecurity.test.ts` — RT-04/RT-08: trusted renderer URL (solo packaged
+  `index.html` ammesso, `file:///tmp/malicious.html` rifiutato; origin normalizzato in dev) e
+  log console renderer senza argomenti potenzialmente PII.
 
 > Nota: la suite funzionale/anti-leak non e' una garanzia di sicurezza. Prima del deploy in
 > produzione legale, eseguire un pentest e completare la checklist Go/No-Go (vedi piano).

@@ -1521,13 +1521,16 @@ function ReviewDetailPanel({
   onManualTypeChange: (value: ReviewDocumentDetail['entities'][number]['type']) => void
   onAddManualEntity: () => void
   onSetSensitivity: (decision: 'sensitive' | 'not_sensitive' | null) => void
-  onApprove: () => void
+  onApprove: (acceptResidualRisk: boolean) => void
   onClose: () => void
 }): React.JSX.Element {
   const originalRef = useRef<HTMLDivElement | null>(null)
   const pseudonymRef = useRef<HTMLDivElement | null>(null)
   const syncingRef = useRef(false)
   const [activeEntityKey, setActiveEntityKey] = useState<string | null>(null)
+  // RT-06: la conferma del rischio residuo riparte da zero per ogni documento.
+  const [riskAckChecked, setRiskAckChecked] = useState(false)
+  useEffect(() => setRiskAckChecked(false), [detail.docId])
   const selectedEntities = useMemo(
     () => detail.entities.filter((entity) => selectedKeys.has(entityKey(entity))),
     [detail.entities, selectedKeys]
@@ -1730,10 +1733,24 @@ function ReviewDetailPanel({
                 Conferma dopo originale, anteprima ed entita' attive.
               </p>
             )}
+            {detail.requiresRiskAck ? (
+              <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] leading-4 text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={riskAckChecked}
+                  onChange={(event) => setRiskAckChecked(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Rischio residuo alto: ho verificato i riferimenti contestuali (R.G., udienze,
+                  importi) e confermo consapevolmente l'approvazione.
+                </span>
+              </label>
+            ) : null}
             <button
               type="button"
-              onClick={onApprove}
-              disabled={actionBusy}
+              onClick={() => onApprove(riskAckChecked)}
+              disabled={actionBusy || (detail.requiresRiskAck && !riskAckChecked)}
               className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
               {actionBusy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
@@ -1978,7 +1995,7 @@ function Dashboard({
     }
   }
 
-  async function approveDetail(): Promise<void> {
+  async function approveDetail(acceptResidualRisk: boolean): Promise<void> {
     if (!activeRef || !detail) return
     setActionBusy(true)
     setActionError(null)
@@ -1989,9 +2006,17 @@ function Dashboard({
         setActionError('Applicazione della selezione non riuscita: il documento potrebbe essere cambiato.')
         return
       }
-      const approved = await window.anonymcp.approveReviewDocument(activeRef.folderId, activeRef.docId)
-      if (!approved) {
-        setActionError('Approvazione non riuscita: il documento potrebbe essere cambiato.')
+      const approved = await window.anonymcp.approveReviewDocument(
+        activeRef.folderId,
+        activeRef.docId,
+        acceptResidualRisk || undefined
+      )
+      if (!approved.ok) {
+        setActionError(
+          approved.reason === 'risk_ack_required'
+            ? 'Approvazione rifiutata: conferma prima il rischio residuo alto con la spunta dedicata.'
+            : 'Approvazione non riuscita: il documento potrebbe essere cambiato.'
+        )
         return
       }
       setActiveRef(null)
@@ -2233,7 +2258,7 @@ function Dashboard({
             onManualTypeChange={setManualType}
             onAddManualEntity={() => void addManualEntity()}
             onSetSensitivity={(decision) => void setSensitivity(decision)}
-            onApprove={() => void approveDetail()}
+            onApprove={(acceptResidualRisk) => void approveDetail(acceptResidualRisk)}
             onClose={() => {
               setActiveRef(null)
               setDetail(null)

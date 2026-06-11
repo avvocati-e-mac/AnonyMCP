@@ -140,7 +140,8 @@ export const ReviewDocumentListItemSchema = z.object({
   sensitive: z.boolean(),
   sensitiveSuggested: z.boolean(),
   sensitivityOverride: SensitivityOverrideSchema.optional(),
-  exposable: z.boolean()
+  exposable: z.boolean(),
+  requiresRiskAck: z.boolean()
 }).strict()
 
 export const ReviewDocumentListSchema = z.array(ReviewDocumentListItemSchema)
@@ -183,9 +184,21 @@ export const ReviewSetSensitivityRequestSchema = ReviewDocumentRequestSchema.ext
   decision: SensitivityOverrideSchema.nullable()
 }).strict()
 
+export const ReviewApproveRequestSchema = ReviewDocumentRequestSchema.extend({
+  // RT-06: conferma esplicita del rischio residuo, obbligatoria oltre soglia.
+  acceptResidualRisk: z.boolean().optional()
+}).strict()
+
 export const BooleanResultSchema = z.object({
   ok: z.boolean()
 }).strict()
+
+export const ApproveResultSchema = z.object({
+  ok: z.boolean(),
+  reason: z.enum(['unknown_document', 'risk_ack_required']).optional()
+}).strict()
+
+export type ApproveResult = z.infer<typeof ApproveResultSchema>
 
 export const PendingWriteListRequestSchema = z.object({
   folderId: z.string().min(1).optional()
@@ -246,7 +259,11 @@ export interface AnonymcpElectronApi {
     type: z.infer<typeof EntityTypeSchema>
   ) => Promise<ReviewEntity | null>
   applyReviewSelection: (folderId: string, docId: string, entities: ReviewEntity[]) => Promise<boolean>
-  approveReviewDocument: (folderId: string, docId: string) => Promise<boolean>
+  approveReviewDocument: (
+    folderId: string,
+    docId: string,
+    acceptResidualRisk?: boolean
+  ) => Promise<ApproveResult>
   setDocumentSensitivity: (
     folderId: string,
     docId: string,

@@ -19,6 +19,7 @@ la direzione, si crea un nuovo ADR che fa `supersedes` del precedente.
 | [0005](0005-mcp-write-rehydration.md) | Scrittura MCP con re-idratazione locale e quarantena | security | accepted | sì |
 | [0006](0006-entity-consolidation-rehydration.md) | Consolidamento entità (id-entità interno) per la re-idratazione | security | accepted | sì |
 | [0007](0007-ner-model-target.md) | Target NER Fase 2 = italian-ner-xxl-v2, non Italian-Legal-BERT | pipeline | accepted | sì |
+| [0008](0008-residual-risk-explicit-ack.md) | Rischio residuo oltre soglia = conferma esplicita in approvazione, non blocco MCP | security | accepted | sì |
 
 ## Come si legge un ADR
 

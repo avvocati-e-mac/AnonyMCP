@@ -35,7 +35,7 @@ describe('override sensibilita documenti', () => {
 
     expect(reg.reviewList('400f')[0]!.sensitive).toBe(true)
     expect(reg.reviewList('400f')[0]!.sensitiveSuggested).toBe(true)
-    expect(reg.approve('400f', docId)).toBe(true)
+    expect(reg.approve('400f', docId).ok).toBe(true)
     expect(reg.exposableDocs()).toHaveLength(0)
 
     expect(reg.setSensitivityOverride('400f', docId, 'not_sensitive')).toBe(true)

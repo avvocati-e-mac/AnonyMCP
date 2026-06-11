@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import {
   buildExposedFolders,
   discoverPracticeFolders,
@@ -22,7 +22,7 @@ afterEach(() => {
 })
 
 describe('folderImport discovery', () => {
-  it('manual usa direttamente le cartelle selezionate', () => {
+  it('manual usa direttamente le cartelle selezionate (percorsi canonici)', () => {
     const root = tmpRoot()
     const a = join(root, '400F')
     const b = join(root, 'Mario Rossi')
@@ -30,7 +30,40 @@ describe('folderImport discovery', () => {
     mkdirSync(b)
 
     const found = discoverPracticeFolders([a, b], 'manual').map((candidate) => candidate.path)
-    expect(found).toEqual([resolve(a), resolve(b)])
+    expect(found).toEqual([realpathSync(a), realpathSync(b)])
+  })
+
+  it('manual canonicalizza una selezione symlink al percorso reale (RT-01)', () => {
+    const root = tmpRoot()
+    const real = join(root, 'pratica-reale')
+    const link = join(root, 'alias')
+    mkdirSync(real)
+    symlinkSync(real, link)
+
+    const found = discoverPracticeFolders([link], 'manual')
+    expect(found).toHaveLength(1)
+    expect(found[0]!.path).toBe(realpathSync(real))
+  })
+
+  it('la discovery scarta le directory symlink dentro la root (RT-01)', () => {
+    const root = tmpRoot()
+    const outside = tmpRoot()
+    mkdirSync(join(root, '001'))
+    mkdirSync(join(outside, 'fuori-pratica'))
+    symlinkSync(join(outside, 'fuori-pratica'), join(root, '002'))
+
+    const practices = discoverPracticeFolders([root], 'practices_root').map((c) => c.name)
+    expect(practices).toEqual(['001'])
+
+    // clients_root: symlink scartato sia a livello cliente sia a livello pratica.
+    const clients = tmpRoot()
+    mkdirSync(join(clients, 'Cliente Alfa'))
+    mkdirSync(join(clients, 'Cliente Alfa', 'RG-2024-1'))
+    symlinkSync(join(outside, 'fuori-pratica'), join(clients, 'Cliente Alfa', 'RG-2024-2'))
+    symlinkSync(outside, join(clients, 'Cliente Beta'))
+
+    const found = discoverPracticeFolders([clients], 'clients_root').map((c) => c.name)
+    expect(found).toEqual(['RG-2024-1'])
   })
 
   it('practices_root importa le sottocartelle dirette', () => {

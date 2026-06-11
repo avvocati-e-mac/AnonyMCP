@@ -41,7 +41,7 @@ describe('flusso review_required (requireManualApproval)', () => {
     const r = new PracticeRegistry([{ id: 'p1', label: '400F', path: dir }], true)
     await r.scan('p1')
     const docId = r.getPractice('p1')!.docs.keys().next().value as string
-    expect(r.approve('p1', docId)).toBe(true)
+    expect(r.approve('p1', docId).ok).toBe(true)
     expect(r.exposableDocs()).toHaveLength(1)
     const hits = r.search('p1', 'risoluzione contratto')
     expect(hits.length).toBeGreaterThan(0)

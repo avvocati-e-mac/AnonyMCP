@@ -58,8 +58,10 @@ npm install
 npm run build        # tsc → dist/
 npm run app:build    # build Electron/Vite → out/
 npm run app:dist:mac # build DMG macOS beta/finale secondo package.json
-npm test             # vitest (tutta la suite)
+npm test             # vitest (tutta la suite; pretest ripara l'ABI di better-sqlite3 se serve)
 npm run typecheck    # tsc --noEmit
+npm run rebuild:node     # better-sqlite3 per ABI Node (dopo un packaging Electron)
+npm run rebuild:electron # better-sqlite3 per ABI Electron (prima di app:dev se FTS5 degradata)
 npm run gen:fixtures # rigenera i documenti sintetici di test
 npm run inspector    # MCP Inspector sul server compilato
 npm start            # avvia (richiede anonymcp.config.json)

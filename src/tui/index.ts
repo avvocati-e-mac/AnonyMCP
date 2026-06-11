@@ -82,7 +82,23 @@ async function main(): Promise<void> {
         process.stderr.write(`Impossibile applicare la review per ${doc.docId}: documento non aggiornato.\n`)
         continue
       }
-      registry.approve(practiceId, doc.docId)
+      // RT-06 (ADR-0008): oltre soglia di rischio residuo serve conferma esplicita.
+      let acceptResidualRisk = false
+      if (registry.requiresRiskAck(doc)) {
+        const risk = Math.round((doc.result.residualRisk ?? 0) * 100)
+        acceptResidualRisk = await confirm(
+          `  Rischio residuo alto (${risk}%): restano riferimenti contestuali (R.G., udienze, importi). Approvi comunque? [s/N] `
+        )
+        if (!acceptResidualRisk) {
+          process.stdout.write(`  · Lasciato in review: ${doc.filePath.split('/').pop()}\n`)
+          continue
+        }
+      }
+      const approved = registry.approve(practiceId, doc.docId, { acceptResidualRisk })
+      if (!approved.ok) {
+        process.stderr.write(`Approvazione rifiutata per ${doc.docId} (${approved.reason ?? 'errore'}).\n`)
+        continue
+      }
       approvedCount++
     }
   }

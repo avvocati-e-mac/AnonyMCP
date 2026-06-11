@@ -40,10 +40,29 @@ comprenda meglio il linguaggio legale. Vedi [ADR-0007](adr/0007-ner-model-target
 **Gap M6/M7 emerso nel test Electron:** `better-sqlite3` è un modulo nativo e usa ABI diverse
 tra Node CLI e Electron. Con un solo `node_modules`, un rebuild per Electron fa funzionare FTS5
 nell'app ma rompe i test Node; un rebuild per Node ripristina la suite ma può degradare FTS5 in
-una nuova istanza Electron. Il packaging deve quindi includere un rebuild nativo Electron
-dedicato, mentre lo sviluppo deve avere comandi espliciti per tornare al build Node prima dei
-test. Fino a quel punto, la UI può funzionare con ricerca degradata, ma non va considerata
-produzione.
+una nuova istanza Electron.
+
+*Stato 2026-06-10 — mitigato per lo sviluppo locale:*
+
+- il packaging (`npm run app:dist*`, electron-builder con `npmRebuild`) ricompila per Electron
+  e a fine corsa **ripristina automaticamente l'ABI Node** (`&& npm run rebuild:node`);
+- `pretest` esegue `scripts/ensureNodeSqlite.cjs`: verifica better-sqlite3 + FTS5 con il Node
+  corrente e, in caso di build Electron residua, ricompila per Node prima della suite;
+- comandi espliciti: `npm run rebuild:node` (suite/CLI) e `npm run rebuild:electron`
+  (prima di `app:dev` se FTS5 risulta degradata nell'app).
+
+*Collaudo 2026-06-11 (app reale, pratiche sintetiche):* due insidie confermate sul campo e
+fissate in `scripts/rebuildElectron.cjs`:
+
+- `electron-builder install-app-deps` può essere un no-op silenzioso (binario resta ABI Node,
+  app funzionante ma FTS5 degradata senza errori) → serve `electron-rebuild --force`;
+- su macOS arm64 il binario ricompilato va **ri-firmato ad-hoc** (`codesign --force --sign -`),
+  altrimenti dyld uccide Electron con SIGKILL "Code Signature Invalid" senza alcun errore JS.
+
+Il CI di release usa job separati con `node_modules` freschi, quindi non era affetto. Resta
+aperto per la produzione: verifica nel packaged app che FTS5 sia attiva (non degradata) come
+parte del Go/No-Go M6 — il collaudo dev sopra mostra che la degradazione è silenziosa, quindi
+serve un check esplicito (es. presenza `pratica.searchindex.db` dopo scan).
 
 ## Red-team integrativo 2026-06-03 — remediation pre-produzione
 
@@ -83,6 +102,21 @@ Stato remediation 2026-06-04:
   non sensibili (`argCount`).
 - Entity red-team: aggiunti test sintetici estesi da atti/perizie OCR per leak strutturati,
   societa' e falsi positivi di intestazioni/ruoli; fix minimi su sanitizer, regex e veto filter.
+
+Stato remediation 2026-06-10:
+
+- RT-01 chiuso: oltre ai guard già presenti su scan (symlink file rifiutati) e M-Write
+  (`lstat`/`realpath` sui segmenti), ora `loadConfig` canonicalizza i percorsi pratica con
+  `realpath` (l'allowlist contiene solo percorsi fisici) e l'import Electron scarta le
+  directory symlink in discovery (`practices_root`/`clients_root`) canonicalizzando le
+  selezioni manuali. Test in `config.test.ts` e `folderImport.test.ts`.
+- RT-06 chiuso con decisione di prodotto formalizzata in
+  [ADR-0008](adr/0008-residual-risk-explicit-ack.md): oltre `RISK_BLOCK_THRESHOLD`
+  l'approvazione richiede conferma esplicita del rischio residuo (spunta in UI Electron,
+  prompt in TUI), persistita in `pratica.approvals.json`; le approvazioni storiche senza
+  conferma su documenti ad alto rischio decadono in review (fail-closed). Nessun blocco MCP
+  duro: con l'euristica attuale colpirebbe la maggioranza degli atti (alarm fatigue).
+  Test: `test/residualRiskAck.test.ts`.
 
 ## Red-team 2026-06-04 — badge stato UI e divergenza config
 
